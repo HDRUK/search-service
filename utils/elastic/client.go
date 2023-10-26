@@ -7,21 +7,11 @@ import (
 	"os"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/joho/godotenv"
 )
 
-var (
-	ElasticClient *elasticsearch.Client
-)
-
-// Loads environment variables and defines the ElasticSearch client
-// Authentication and elastic deployment endpoint are required environment variables
-func init() {
-	err := godotenv.Load("../.env")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
+// Defines the ElasticSearch client, authentication and elastic deployment
+// endpoint are required environment variables.
+func DefaultClient() *elasticsearch.Client {
 	// Note: we might not need to define custom transport with infra hosted elastic
 	// It is defined here in order to disable SSL cert verification
 	tr := &http.Transport{
@@ -40,5 +30,5 @@ func init() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	ElasticClient = es
+	return es
 }

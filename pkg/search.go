@@ -7,10 +7,19 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
 
 	"hdruk/search-service/utils/elastic"
 )
+
+var (
+	ElasticClient *elasticsearch.Client
+)
+
+func DefineElasticClient() {
+	ElasticClient = elastic.DefaultClient()
+}
 
 // Query represents the search query incoming from the gateway-api
 // Expected to be a string in the body of the request e.g. {'query': 'diabetes snomed'}
@@ -48,24 +57,21 @@ func SearchGeneric(c *gin.Context) {
 		collectionSearch(query, collectionResults)
 	}()
 
-	for i := 0; i < 3; i++ {
-		select {
-		case datasets := <-datasetResults:
-			c.JSON(http.StatusOK, gin.H{"datasets": datasets})
-		case tools := <-toolResults:
-			c.JSON(http.StatusOK, gin.H{"tools": tools})
-		case collections := <-collectionResults:
-			c.JSON(http.StatusOK, gin.H{"collections": collections})
-		}
-	}
+	datasets := <-datasetResults
+	tools := <-toolResults
+	collections := <-collectionResults
+	
+	c.JSON(http.StatusOK, gin.H{
+		"datasets": datasets,
+		"tools": tools,
+		"collections": collections,
+	})
 }
 
 // datasetSearch performs a search of the ElasticSearch datasets index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
 func datasetSearch(query Query, res chan SearchResponse) {
-	//elasticClient := newElasticClient()
-
 	var buf bytes.Buffer
 	// TO DO: update with elastic config for datasets
 	elasticQuery := gin.H{
@@ -79,9 +85,9 @@ func datasetSearch(query Query, res chan SearchResponse) {
 		log.Fatal(err.Error())
 	}
 
-	response, err := elastic.ElasticClient.Search(
-		elastic.ElasticClient.Search.WithIndex("dracula"),
-		elastic.ElasticClient.Search.WithBody(&buf),
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex("dracula"),
+		ElasticClient.Search.WithBody(&buf),
 	)
 
 	if err != nil {

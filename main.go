@@ -15,6 +15,8 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	search.DefineElasticClient()
+
 	router := gin.Default()
 	// Define generic search endpoint, searches across all available entities
 	router.GET("/search", search.SearchGeneric)
