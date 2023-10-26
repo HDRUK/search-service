@@ -86,7 +86,7 @@ func datasetSearch(query Query, res chan SearchResponse) {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("dracula"),
+		ElasticClient.Search.WithIndex("datasets"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
