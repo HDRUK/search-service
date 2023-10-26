@@ -17,7 +17,7 @@ func main() {
 
 	router := gin.Default()
 	// Define generic search endpoint, searches across all available entities
-    router.GET("/search", search.SearchGeneric)
+	router.GET("/search", search.SearchGeneric)
 
-    router.Run("localhost:8080")
+	router.Run("localhost:8080")
 }

@@ -28,14 +28,14 @@ func init() {
 }
 
 func GetTestGinContext(w *httptest.ResponseRecorder) *gin.Context {
-    gin.SetMode(gin.TestMode)
+	gin.SetMode(gin.TestMode)
 
-    ctx, _ := gin.CreateTestContext(w)
-    ctx.Request = &http.Request{
-    	Header: make(http.Header),
-    }
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = &http.Request{
+		Header: make(http.Header),
+	}
 
-    return ctx
+	return ctx
 }
 
 func MockGet(c *gin.Context) {
@@ -51,7 +51,7 @@ func MockGet(c *gin.Context) {
 
 func TestSearchGeneric(t *testing.T) {
 	w := httptest.NewRecorder()
-    c := GetTestGinContext(w)
+	c := GetTestGinContext(w)
 	MockGet(c)
 
 	SearchGeneric(c)
@@ -63,7 +63,7 @@ func TestSearchGeneric(t *testing.T) {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	
+
 	var testResp []interface{}
 	ok := json.Unmarshal(bodyBytes, &testResp)
 	if ok != nil {
@@ -71,6 +71,6 @@ func TestSearchGeneric(t *testing.T) {
 	} else {
 		fmt.Print("no unmarshal error")
 	}
-	
+
 	fmt.Printf("\ntestResp: %s\n", testResp)
 }

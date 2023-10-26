@@ -20,10 +20,10 @@ type Query struct {
 
 // SearchResponse represents the expected structure of results returned by ElasticSearch
 type SearchResponse struct {
-	Took int `json:"took"`
-	TimedOut bool `json:"timed_out"`
-	Shards map[string]interface{} `json:"_shards"`
-	Hits map[string]interface{} `json:"hits"`
+	Took     int                    `json:"took"`
+	TimedOut bool                   `json:"timed_out"`
+	Shards   map[string]interface{} `json:"_shards"`
+	Hits     map[string]interface{} `json:"hits"`
 }
 
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
@@ -32,35 +32,35 @@ type SearchResponse struct {
 func SearchGeneric(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
-        return
-    }
+		return
+	}
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
 
 	go func() {
-        datasetSearch(query, datasetResults)
-    }()
-    go func() {
-        toolSearch(query, toolResults)
-    }()
+		datasetSearch(query, datasetResults)
+	}()
 	go func() {
-        collectionSearch(query, collectionResults)
-    }()
+		toolSearch(query, toolResults)
+	}()
+	go func() {
+		collectionSearch(query, collectionResults)
+	}()
 
 	for i := 0; i < 3; i++ {
-        select {
-        case datasets := <-datasetResults:
-            c.JSON(http.StatusOK, gin.H{"datasets": datasets})
-        case tools := <-toolResults:
-            c.JSON(http.StatusOK, gin.H{"tools": tools})
+		select {
+		case datasets := <-datasetResults:
+			c.JSON(http.StatusOK, gin.H{"datasets": datasets})
+		case tools := <-toolResults:
+			c.JSON(http.StatusOK, gin.H{"tools": tools})
 		case collections := <-collectionResults:
 			c.JSON(http.StatusOK, gin.H{"collections": collections})
 		}
-    }
+	}
 }
 
-// datasetSearch performs a search of the ElasticSearch datasets index using 
+// datasetSearch performs a search of the ElasticSearch datasets index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
 func datasetSearch(query Query, res chan SearchResponse) {
@@ -71,19 +71,19 @@ func datasetSearch(query Query, res chan SearchResponse) {
 	elasticQuery := gin.H{
 		"query": gin.H{
 			"multi_match": gin.H{
-		  		"query": query.QueryString,
+				"query": query.QueryString,
 			},
-	  	},
+		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-	  log.Fatal(err.Error())
+		log.Fatal(err.Error())
 	}
 
 	response, err := elastic.ElasticClient.Search(
 		elastic.ElasticClient.Search.WithIndex("dracula"),
 		elastic.ElasticClient.Search.WithBody(&buf),
 	)
-	
+
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -100,7 +100,7 @@ func datasetSearch(query Query, res chan SearchResponse) {
 	res <- elasticResp
 }
 
-// toolSearch performs a search of the ElasticSearch tools index using 
+// toolSearch performs a search of the ElasticSearch tools index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
 func toolSearch(query Query, res chan SearchResponse) {
@@ -108,7 +108,7 @@ func toolSearch(query Query, res chan SearchResponse) {
 	res <- stubResp
 }
 
-// collectionsSearch performs a search of the ElasticSearch collections index using 
+// collectionsSearch performs a search of the ElasticSearch collections index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
 func collectionSearch(query Query, res chan SearchResponse) {
