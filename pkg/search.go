@@ -47,25 +47,24 @@ func SearchGeneric(c *gin.Context) {
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
 
-	go func() {
-		datasetSearch(query, datasetResults)
-	}()
-	go func() {
-		toolSearch(query, toolResults)
-	}()
-	go func() {
-		collectionSearch(query, collectionResults)
-	}()
+	results := make(map[string]interface{})
 
-	datasets := <-datasetResults
-	tools := <-toolResults
-	collections := <-collectionResults
+	go datasetSearch(query, datasetResults)
+	go toolSearch(query, toolResults)
+	go collectionSearch(query, collectionResults)
+
+	for i := 0; i < 3; i++ {
+		select {
+			case datasets := <-datasetResults:
+				results["datasets"] = datasets
+			case tools := <-toolResults:
+				results["tools"] = tools
+			case collections := <-collectionResults:
+				results["collections"] = collections
+		}
+	}
 	
-	c.JSON(http.StatusOK, gin.H{
-		"datasets": datasets,
-		"tools": tools,
-		"collections": collections,
-	})
+	c.JSON(http.StatusOK, results)
 }
 
 // datasetSearch performs a search of the ElasticSearch datasets index using
@@ -86,7 +85,7 @@ func datasetSearch(query Query, res chan SearchResponse) {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("datasets"),
+		ElasticClient.Search.WithIndex("dracula"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
