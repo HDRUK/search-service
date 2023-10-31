@@ -63,5 +63,5 @@ func TestSearchGeneric(t *testing.T) {
 	assert.Contains(t, testResp, "collections")
 
 	datasetResp := testResp["datasets"].(map[string]interface{})
-	assert.EqualValues(t, int(datasetResp["took"].(float64)), 3)
+	assert.EqualValues(t, 3, int(datasetResp["took"].(float64)))
 }
