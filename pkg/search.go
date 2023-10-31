@@ -115,6 +115,7 @@ func datasetElasticConfig(query Query) gin.H {
 			"query":     query.QueryString,
 			"fields":    searchableFields,
 			"fuzziness": "AUTO:5,7",
+			"analyzer": "medterms_analyzer",
 		},
 	}
 	mm2 := gin.H{
@@ -122,6 +123,7 @@ func datasetElasticConfig(query Query) gin.H {
 			"query":     query.QueryString,
 			"fields":    searchableFields,
 			"fuzziness": "AUTO:5,7",
+			"analyzer": "medterms_analyzer",
 			"operator":  "and",
 		},
 	}
@@ -130,6 +132,7 @@ func datasetElasticConfig(query Query) gin.H {
 			"query":  query.QueryString,
 			"type":   "phrase",
 			"fields": searchableFields,
+			"analyzer": "medterms_analyzer",
 			"boost":  2,
 		},
 	}
@@ -283,14 +286,14 @@ func collectionsElasticConfig(query Query) gin.H {
 		"multi_match": gin.H{
 			"query":     query.QueryString,
 			"fields":    relatedObjectFields,
-			"fuzziness": "AUTO",
+			"fuzziness": "AUTO:5,7",
 		},
 	}
 	mm2 := gin.H{
 		"multi_match": gin.H{
 			"query":     query.QueryString,
 			"fields":    searchableFields,
-			"fuzziness": "AUTO",
+			"fuzziness": "AUTO:5,7",
 			"boost":     2,
 		},
 	}
