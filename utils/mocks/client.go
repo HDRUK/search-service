@@ -21,22 +21,20 @@ func (mt *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func MockElasticClient() *elasticsearch.Client {
-	responseBody := `{
-		"took": 3,
-		"timed_out": false,
-		"_shards": {},
-		"hits": {}	
-	}`
-
-	mocktrans := MockTransport{
-		Response: &http.Response{
+	mocktrans := MockTransport{}
+	mocktrans.RoundTripFn = func(req *http.Request) (*http.Response, error) {
+		responseBody := `{
+			"took": 3,
+			"timed_out": false,
+			"_shards": {},
+			"hits": {}	
+		}`
+		resp := &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(responseBody)),
 			Header:     http.Header{"X-Elastic-Product": []string{"Elasticsearch"}},
-		},
-	}
-	mocktrans.RoundTripFn = func(req *http.Request) (*http.Response, error) {
-		return mocktrans.Response, nil
+		}
+		return resp, nil
 	}
 
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
