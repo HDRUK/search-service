@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
@@ -47,7 +47,7 @@ func DefineDatasetSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
-		log.Fatal(err.Error())
+		fmt.Println(err.Error())
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
@@ -56,12 +56,13 @@ func DefineDatasetSettings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
-		log.Fatalf("Error defining settings for datasets index: %s", err)
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		fmt.Println(err.Error())
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
@@ -94,7 +95,7 @@ func DefineToolSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
-		log.Fatal(err.Error())
+		fmt.Println(err.Error())
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
@@ -103,12 +104,13 @@ func DefineToolSettings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
-		log.Fatalf("Error defining settings for tools index: %s", err)
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		fmt.Println(err.Error())
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
@@ -123,7 +125,7 @@ func DefineToolSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&mappings).Encode(elasticMappings); err != nil {
-		log.Fatal(err.Error())
+		fmt.Println(err.Error())
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
@@ -132,12 +134,13 @@ func DefineToolSettings(c *gin.Context) {
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
-		log.Fatalf("Error defining settings for tools index: %s", err)
+		c.JSON(mappingsResponse.StatusCode, gin.H{"message": err.Error()})
+		return
 	}
 	defer mappingsResponse.Body.Close()
 	mappingsBody, err := io.ReadAll(mappingsResponse.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		fmt.Println(err.Error())
 	}
 	var mappingResp map[string]interface{}
 	json.Unmarshal(mappingsBody, &mappingResp)
@@ -155,7 +158,7 @@ func closeIndexByName(indexName string) {
 	}
 	closeResponse, err := closeIndexRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
-		log.Fatalf("Error closing %s index: %s", indexName, err)
+		fmt.Printf("Error closing %s index: %s", indexName, err)
 	}
 	defer closeResponse.Body.Close()
 }
@@ -167,7 +170,7 @@ func openIndexByName(indexName string) {
 	}
 	openResponse, err := openIndexRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
-		log.Fatalf("Error reopening %s index: %s", indexName, err)
+		fmt.Printf("Error opening %s index: %s", indexName, err)
 	}
 	defer openResponse.Body.Close()
 }
