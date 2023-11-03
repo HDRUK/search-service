@@ -21,6 +21,8 @@ func main() {
 	router := gin.Default()
 	// Define generic search endpoint, searches across all available entities
 	router.GET("/search", search.SearchGeneric)
+	router.POST("/settings/datasets", search.DefineDatasetSettings)
+	router.POST("/settings/tools", search.DefineToolSettings)
 
 	router.Run(os.Getenv("SEARCHSERVICE_HOST"))
 }
