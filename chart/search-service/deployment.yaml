@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-service
+spec:
+  selector:
+    matchLabels:
+      app: search-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: search-service
+    spec:
+      containers:
+        - name: search-service
+          image: hdruk/search-service:latest
+          ports:
+            - containerPort: 8080
+              name: search-service
+      dnsPolicy: ClusterFirst
