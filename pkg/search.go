@@ -147,7 +147,7 @@ func datasetElasticConfig(query Query) gin.H {
 		"highlight": gin.H{
 			"fields": gin.H{
 				"description": gin.H{},
-				"title":       gin.H{},
+				"abstract":       gin.H{},
 			},
 		},
 		"explain": true,

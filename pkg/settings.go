@@ -38,7 +38,7 @@ func DefineDatasetSettings(c *gin.Context) {
 					"filter": gin.H{
 						"medterms_synonyms": gin.H{
 							"type": "synonym",
-							"synonyms_path": "elastic_synonyms.csv",
+							"synonyms_set": "hdr_synonyms_set",
 							"updateable": true,
 						},
 					},
