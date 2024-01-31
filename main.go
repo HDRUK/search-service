@@ -24,6 +24,7 @@ func main() {
 	router.GET("/search/datasets", search.DatasetSearch)
 	router.GET("/search/tools", search.ToolSearch)
 	router.GET("/search/collections", search.CollectionSearch)
+	router.GET("/search/dur", search.DataUseSearch)
 	router.POST("/settings/datasets", search.DefineDatasetSettings)
 	router.POST("/settings/tools", search.DefineToolSettings)
 
