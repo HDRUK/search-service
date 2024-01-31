@@ -40,14 +40,17 @@ type SearchResponse struct {
 // Search results are returned grouped by entity type.
 func SearchGeneric(c *gin.Context) {
 	var query Query
+
 	if err := c.BindJSON(&query); err != nil {
-		return
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return 
 	}
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
 
 	results := make(map[string]interface{})
+	
 
 	go datasetSearch(query, datasetResults)
 	go toolSearch(query, toolResults)
