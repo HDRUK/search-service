@@ -164,8 +164,16 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"description": gin.H{},
-				"abstract":       gin.H{},
+				"description": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"abstract":       gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
@@ -261,8 +269,16 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"name":        gin.H{},
-				"description": gin.H{},
+				"name":        gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"description": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
@@ -360,9 +376,21 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"description": gin.H{},
-				"name":        gin.H{},
-				"keywords":    gin.H{},
+				"description": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"name":        gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"keywords":    gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
@@ -458,7 +486,11 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"laySummary": gin.H{},
+				"laySummary": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
