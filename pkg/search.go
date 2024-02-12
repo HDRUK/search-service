@@ -32,7 +32,15 @@ type SearchResponse struct {
 	Took     int                    `json:"took"`
 	TimedOut bool                   `json:"timed_out"`
 	Shards   map[string]interface{} `json:"_shards"`
-	Hits     map[string]interface{} `json:"hits"`
+	Hits     map[string][]Hit `json:"hits"`
+}
+
+type Hit struct {
+	Explanation	map[string]interface{}	`json:"_explanation"`
+	Id	string	`json:"_id"`
+    Score	float64	`json:"_score"`   
+    Source	map[string]interface{}	`json:"_source"`
+	Highlight	map[string][]string	`json:"highlight"`
 }
 
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
@@ -114,6 +122,8 @@ func datasetSearch(query Query) SearchResponse {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
+	stripExplanation(elasticResp)
+
 	return elasticResp
 }
 
@@ -156,7 +166,7 @@ func datasetElasticConfig(query Query) gin.H {
 	}
 
 	return gin.H{
-		"size": 1000,
+		"size": 100,
 		"query": gin.H{
 			"bool": gin.H{
 				"should": []gin.H{mm1, mm2, mm3},
@@ -223,6 +233,8 @@ func toolSearch(query Query) SearchResponse {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
+	stripExplanation(elasticResp)
+
 	return elasticResp
 }
 
@@ -261,7 +273,7 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 	}
 	return gin.H{
-		"size": 500,
+		"size": 100,
 		"query": gin.H{
 			"bool": gin.H{
 				"should": []gin.H{mm1, mm2, mm3},
@@ -328,6 +340,8 @@ func collectionSearch(query Query) SearchResponse {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
+	stripExplanation(elasticResp)
+
 	return elasticResp
 }
 
@@ -368,7 +382,7 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 	}
 	return gin.H{
-		"size": 120,
+		"size": 100,
 		"query": gin.H{
 			"bool": gin.H{
 				"should": []gin.H{mm1, mm2, mm3},
@@ -440,6 +454,8 @@ func dataUseSearch(query Query) SearchResponse {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
+	stripExplanation(elasticResp)
+
 	return elasticResp
 }
 
@@ -478,7 +494,7 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 	}
 	return gin.H{
-		"size": 500,
+		"size": 100,
 		"query": gin.H{
 			"bool": gin.H{
 				"should": []gin.H{mm1, mm2, mm3},
@@ -495,4 +511,16 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 	}
+}
+
+// Remove the explanations from a SearchResponse to reduce its size
+func stripExplanation(elasticResp SearchResponse) {
+	var explanations []map[string]interface{}
+
+	for i, hit := range elasticResp.Hits["hits"] {
+		explanations = append(explanations, hit.Explanation)
+		elasticResp.Hits["hits"][i].Explanation = make(map[string]interface{}, 0)
+	}
+
+	// TO DO - send explanations to BigQuery
 }
