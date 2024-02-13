@@ -48,15 +48,17 @@ func SearchGeneric(c *gin.Context) {
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
+	dataUseResults := make(chan SearchResponse)
 
 	results := make(map[string]interface{})
 	
 
-	go datasetSearch(query, datasetResults)
-	go toolSearch(query, toolResults)
-	go collectionSearch(query, collectionResults)
+	go datasetChannel(query, datasetResults)
+	go toolChannel(query, toolResults)
+	go collectionChannel(query, collectionResults)
+	go dataUseChannel(query, dataUseResults)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		select {
 		case datasets := <-datasetResults:
 			results["datasets"] = datasets
@@ -64,16 +66,32 @@ func SearchGeneric(c *gin.Context) {
 			results["tools"] = tools
 		case collections := <-collectionResults:
 			results["collections"] = collections
+		case data_uses := <-dataUseResults:
+			results["data_uses"] = data_uses
 		}
 	}
 
 	c.JSON(http.StatusOK, results)
 }
 
+func DatasetSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		return
+	}
+	results := datasetSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func datasetChannel(query Query, res chan SearchResponse) {
+	elasticResp := datasetSearch(query)
+	res <- elasticResp
+}
+
 // datasetSearch performs a search of the ElasticSearch datasets index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func datasetSearch(query Query, res chan SearchResponse) {
+func datasetSearch(query Query) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := datasetElasticConfig(query)
@@ -99,7 +117,7 @@ func datasetSearch(query Query, res chan SearchResponse) {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
-	res <- elasticResp
+	return elasticResp
 }
 
 // datasetElasticConfig defines the body of the query to the elastic datasets index
@@ -149,18 +167,40 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"description": gin.H{},
-				"abstract":       gin.H{},
+				"description": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"abstract":       gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
 	}
 }
 
+func ToolSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		return
+	}
+	results := toolSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func toolChannel(query Query, res chan SearchResponse) {
+	elasticResp := toolSearch(query)
+	res <- elasticResp
+}
+
 // toolSearch performs a search of the ElasticSearch tools index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func toolSearch(query Query, res chan SearchResponse) {
+func toolSearch(query Query) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := toolsElasticConfig(query)
@@ -186,7 +226,7 @@ func toolSearch(query Query, res chan SearchResponse) {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
-	res <- elasticResp
+	return elasticResp
 }
 
 // toolsElasticConfig defines the body of the query to the elastic tools index
@@ -232,18 +272,40 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"name":        gin.H{},
-				"description": gin.H{},
+				"name":        gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"description": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
 	}
 }
 
+func CollectionSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		return
+	}
+	results := collectionSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func collectionChannel(query Query, res chan SearchResponse) {
+	elasticResp := collectionSearch(query)
+	res <- elasticResp
+}
+
 // collectionsSearch performs a search of the ElasticSearch collections index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func collectionSearch(query Query, res chan SearchResponse) {
+func collectionSearch(query Query) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := collectionsElasticConfig(query)
@@ -269,7 +331,7 @@ func collectionSearch(query Query, res chan SearchResponse) {
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
 
-	res <- elasticResp
+	return elasticResp
 }
 
 // collectionsElasticConfig defines the body of the query to the elastic collections index
@@ -317,9 +379,121 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 		"highlight": gin.H{
 			"fields": gin.H{
-				"description": gin.H{},
-				"name":        gin.H{},
-				"keywords":    gin.H{},
+				"description": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"name":        gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"keywords":    gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+			},
+		},
+		"explain": true,
+	}
+}
+
+func DataUseSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		return
+	}
+	results := dataUseSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func dataUseChannel(query Query, res chan SearchResponse) {
+	elasticResp := dataUseSearch(query)
+	res <- elasticResp
+}
+
+// dataUseSearch performs a search of the ElasticSearch data uses index using
+// the provided query as the search term.  Results are returned in the format
+// returned by elastic (SearchResponse).
+func dataUseSearch(query Query) SearchResponse {
+	var buf bytes.Buffer
+
+	elasticQuery := dataUseElasticConfig(query)
+	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+		log.Fatal(err.Error())
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex("data_uses"),
+		ElasticClient.Search.WithBody(&buf),
+	)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var elasticResp SearchResponse
+	json.Unmarshal(body, &elasticResp)
+
+	return elasticResp
+}
+
+// dataUseElasticConfig defines the body of the query to the elastic data uses index
+func dataUseElasticConfig(query Query) gin.H {
+	searchableFields := []string{
+		"projectTitle",
+		"laySummary",
+		"publicBenefitStatement",
+		"technicalSummary",
+		"fundersAndSponsors",
+		"datasetTitles",
+		"keywords",
+	}
+	mm1 := gin.H{
+		"multi_match": gin.H{
+			"query":     query.QueryString,
+			"fields":    searchableFields,
+			"fuzziness": "AUTO:5,7",
+		},
+	}
+	mm2 := gin.H{
+		"multi_match": gin.H{
+			"query":     query.QueryString,
+			"fields":    searchableFields,
+			"fuzziness": "AUTO:5,7",
+			"operator":  "and",
+		},
+	}
+	mm3 := gin.H{
+		"multi_match": gin.H{
+			"query":  query.QueryString,
+			"fields": searchableFields,
+			"type":   "phrase",
+			"boost":  2,
+		},
+	}
+	return gin.H{
+		"size": 500,
+		"query": gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		},
+		"highlight": gin.H{
+			"fields": gin.H{
+				"laySummary": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
 			},
 		},
 		"explain": true,
