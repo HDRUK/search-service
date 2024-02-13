@@ -14,8 +14,8 @@ import (
 
 // DefineDatasetSettings updates the settings of the datasets index in elastic
 // to use a custom analyzer.  This analyzer includes synonym analysis based on
-// a file of synonyms called elastic_synonyms.csv, which must be present in the
-// /usr/share/elasticsearch/config directory of the elastic deployment.
+// a file of synonyms called hdr_synonyms_set, which must be present _synonyms
+// collection of the elastic deployment.
 func DefineDatasetSettings(c *gin.Context) {
 	// Elastic requires the index to be closed before settings are updated
 	closeIndexByName("datasets")
@@ -69,6 +69,43 @@ func DefineDatasetSettings(c *gin.Context) {
 
 	// Reopen the index
 	openIndexByName("datasets")
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// DefineDatasetMappings initialises the datasets index and defines the custom
+// mappings for specific fields which need to be used as filters.
+// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// requires reindexing.
+func DefineDatasetMappings(c *gin.Context) {
+	var buf bytes.Buffer
+	elasticMappings := gin.H{
+		"mappings": gin.H{
+			"properties": gin.H{
+				"publisherName": gin.H{"type": "keyword"},
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
+		fmt.Println(err.Error())
+	}
+
+	request := esapi.IndicesCreateRequest{
+		Index:      "datasets",
+		Body:       &buf,
+	}
+	response, err := request.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(body, &resp)
 
 	c.JSON(http.StatusOK, resp)
 }

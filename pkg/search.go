@@ -23,8 +23,10 @@ func DefineElasticClient() {
 
 // Query represents the search query incoming from the gateway-api
 // Expected to be a string in the body of the request e.g. {'query': 'diabetes snomed'}
+// Expecting filters to be e.g. "filters": {"publisherName": ["SAIL", "BREATHE"],"geographicLocation": ["England", "Wales"]}
 type Query struct {
 	QueryString string `json:"query"`
+	Filters map[string][]interface{}
 }
 
 // SearchResponse represents the expected structure of results returned by ElasticSearch
@@ -32,7 +34,14 @@ type SearchResponse struct {
 	Took     int                    `json:"took"`
 	TimedOut bool                   `json:"timed_out"`
 	Shards   map[string]interface{} `json:"_shards"`
-	Hits     map[string][]Hit `json:"hits"`
+	Hits	HitsField `json:"hits"`
+	Aggregations map[string]interface{}	`json:"aggregations"`
+}
+
+type HitsField struct {
+	Total	map[string]interface{}	`json:"total"`
+	MaxScore	float64	`json:"max_score"`
+	Hits	[]Hit	`json:"hits"`
 }
 
 type Hit struct {
@@ -166,6 +175,25 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 	}
 
+	filters := []gin.H{}
+	for key, terms := range(query.Filters) {
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"should": filters,
+		},
+	}
+
+	agg1 := gin.H{
+		"publisherName": gin.H{
+			"terms": gin.H{"field": "publisherName", "size": 100},
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -180,7 +208,7 @@ func datasetElasticConfig(query Query) gin.H {
 					"fragment_size": 0,
 					"no_match_size": 0,
 				},
-				"abstract":       gin.H{
+				"abstract": gin.H{
 					"boundary_scanner": "sentence",
 					"fragment_size": 0,
 					"no_match_size": 0,
@@ -188,6 +216,8 @@ func datasetElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
+		"aggs": agg1,
 	}
 }
 
@@ -518,9 +548,9 @@ func dataUseElasticConfig(query Query) gin.H {
 func stripExplanation(elasticResp SearchResponse) {
 	var explanations []map[string]interface{}
 
-	for i, hit := range elasticResp.Hits["hits"] {
+	for i, hit := range elasticResp.Hits.Hits {
 		explanations = append(explanations, hit.Explanation)
-		elasticResp.Hits["hits"][i].Explanation = make(map[string]interface{}, 0)
+		elasticResp.Hits.Hits[i].Explanation = make(map[string]interface{}, 0)
 	}
 
 	// TO DO - send explanations to BigQuery
