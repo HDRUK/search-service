@@ -5,7 +5,7 @@ on:
     push:
         branches:
             - "dev"
-            - "GAT-3276"
+            #- "GAT-3276"
             - "fix/calum"
 
 env:
@@ -24,7 +24,7 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
               with:
-                  ref: GAT-3276
+                  ref: fix/calum
 
             - name: Read VERSION file
               id: getversion
@@ -73,7 +73,8 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
               with:
-                  ref: GAT-3276
+                  #ref: GAT-3276
+                  ref: fix/calum
 
             - name: Google Auth
               id: auth
