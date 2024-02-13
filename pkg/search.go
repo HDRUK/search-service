@@ -49,7 +49,8 @@ type Hit struct {
 func SearchGeneric(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
-		return
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return 
 	}
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
