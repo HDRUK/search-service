@@ -30,8 +30,8 @@ func GetTestGinContext(w *httptest.ResponseRecorder) *gin.Context {
 	return ctx
 }
 
-func MockGet(c *gin.Context) {
-	c.Request.Method = "GET"
+func MockPostToSearch(c *gin.Context) {
+	c.Request.Method = "POST"
 	c.Request.Header.Set("Content-Type", "application/json")
 	bodyContent := gin.H{"query": "test query"}
 	bodyBytes, err := json.Marshal(bodyContent)
@@ -44,7 +44,7 @@ func MockGet(c *gin.Context) {
 func TestSearchGeneric(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
-	MockGet(c)
+	MockPostToSearch(c)
 
 	SearchGeneric(c)
 
@@ -70,7 +70,7 @@ func TestSearchGeneric(t *testing.T) {
 func TestDatasetSearch(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
-	MockGet(c)
+	MockPostToSearch(c)
 
 	DatasetSearch(c)
 
@@ -92,7 +92,7 @@ func TestDatasetSearch(t *testing.T) {
 func TestToolSearch(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
-	MockGet(c)
+	MockPostToSearch(c)
 
 	ToolSearch(c)
 
@@ -114,7 +114,7 @@ func TestToolSearch(t *testing.T) {
 func TestCollectionSearch(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
-	MockGet(c)
+	MockPostToSearch(c)
 
 	CollectionSearch(c)
 
@@ -136,7 +136,7 @@ func TestCollectionSearch(t *testing.T) {
 func TestDataUseSearch(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
-	MockGet(c)
+	MockPostToSearch(c)
 
 	DataUseSearch(c)
 
