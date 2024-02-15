@@ -21,9 +21,27 @@ func DefineElasticClient() {
 	ElasticClient = elastic.DefaultClient()
 }
 
-// Query represents the search query incoming from the gateway-api
-// Expected to be a string in the body of the request e.g. {'query': 'diabetes snomed'}
-// Expecting filters to be e.g. "filters": {"publisherName": ["SAIL", "BREATHE"],"geographicLocation": ["England", "Wales"]}
+/* Query represents the search query incoming from the gateway-api
+The body of the request is expected to have the following structure
+```
+{
+	"query": <query_term>,
+	"filters": {
+		<type>: {
+			<key>: [
+				<value1>,
+				...
+			]
+		}
+	}
+}
+```
+where:
+- query_term is a string e.g. "asthma"
+- type is a string matching the name of an elasticsearch index e.g. "dataset"
+- key is a string matching a field in the elastic search index specified e.g. "publisherName"
+- value1 is a value matching values in the specified fields of the elastic index e.g. "publisher A" 
+*/
 type Query struct {
 	QueryString string `json:"query"`
 	Filters map[string]map[string][]interface{} `json:"filters"`

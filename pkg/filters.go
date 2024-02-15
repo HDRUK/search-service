@@ -20,6 +20,28 @@ type FilterRequest struct {
 	Filters	[]map[string]interface{} `json:"filters"`
 }
 
+/*
+ListFilters lists all the values available for the filter type and key pairs
+in the given FilterRequest.
+The `type` must match an existing elasticsearch index.
+The `keys` must match a field name in that index.
+The expected structure of a FilterRequest is:
+
+```
+{
+	"filters": [
+		{
+			"type": "dataset",
+			"keys": "publisherName"
+		},
+		{
+			"type": "dataset",
+			"keys": "containsTissue"
+		}
+	]
+}
+```
+*/
 func ListFilters(c *gin.Context) {
 	var filterRequest FilterRequest
 	if err := c.BindJSON(&filterRequest); err != nil {
