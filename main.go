@@ -27,6 +27,8 @@ func main() {
 	router.POST("/search/dur", search.DataUseSearch)
 	router.POST("/settings/datasets", search.DefineDatasetSettings)
 	router.POST("/settings/tools", search.DefineToolSettings)
+	router.POST("/mappings/datasets", search.DefineDatasetMappings)
+	router.POST("/filters", search.ListFilters)
 
 	router.Run(os.Getenv("SEARCHSERVICE_HOST"))
 }

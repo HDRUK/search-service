@@ -31,7 +31,8 @@ func MockElasticClient() *elasticsearch.Client {
 				"took": 3,
 				"timed_out": false,
 				"_shards": {},
-				"hits": {}	
+				"hits": {},
+				"aggregations": {}
 			}`
 		}
 		resp := &http.Response{

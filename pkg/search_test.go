@@ -58,12 +58,12 @@ func TestSearchGeneric(t *testing.T) {
 	var testResp map[string]interface{}
 	json.Unmarshal(bodyBytes, &testResp)
 
-	assert.Contains(t, testResp, "datasets")
-	assert.Contains(t, testResp, "tools")
-	assert.Contains(t, testResp, "collections")
-	assert.Contains(t, testResp, "data_uses")
+	assert.Contains(t, testResp, "dataset")
+	assert.Contains(t, testResp, "tool")
+	assert.Contains(t, testResp, "collection")
+	assert.Contains(t, testResp, "dataUseRegister")
 
-	datasetResp := testResp["datasets"].(map[string]interface{})
+	datasetResp := testResp["dataset"].(map[string]interface{})
 	assert.EqualValues(t, 3, int(datasetResp["took"].(float64)))
 }
 

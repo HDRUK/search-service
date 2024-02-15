@@ -21,10 +21,30 @@ func DefineElasticClient() {
 	ElasticClient = elastic.DefaultClient()
 }
 
-// Query represents the search query incoming from the gateway-api
-// Expected to be a string in the body of the request e.g. {'query': 'diabetes snomed'}
+/* Query represents the search query incoming from the gateway-api
+The body of the request is expected to have the following structure
+```
+{
+	"query": <query_term>,
+	"filters": {
+		<type>: {
+			<key>: [
+				<value1>,
+				...
+			]
+		}
+	}
+}
+```
+where:
+- query_term is a string e.g. "asthma"
+- type is a string matching the name of an elasticsearch index e.g. "dataset"
+- key is a string matching a field in the elastic search index specified e.g. "publisherName"
+- value1 is a value matching values in the specified fields of the elastic index e.g. "publisher A" 
+*/
 type Query struct {
 	QueryString string `json:"query"`
+	Filters map[string]map[string][]interface{} `json:"filters"`
 }
 
 // SearchResponse represents the expected structure of results returned by ElasticSearch
@@ -32,7 +52,14 @@ type SearchResponse struct {
 	Took     int                    `json:"took"`
 	TimedOut bool                   `json:"timed_out"`
 	Shards   map[string]interface{} `json:"_shards"`
-	Hits     map[string][]Hit `json:"hits"`
+	Hits	HitsField `json:"hits"`
+	Aggregations map[string]interface{}	`json:"aggregations"`
+}
+
+type HitsField struct {
+	Total	map[string]interface{}	`json:"total"`
+	MaxScore	float64	`json:"max_score"`
+	Hits	[]Hit	`json:"hits"`
 }
 
 type Hit struct {
@@ -67,13 +94,13 @@ func SearchGeneric(c *gin.Context) {
 	for i := 0; i < 4; i++ {
 		select {
 		case datasets := <-datasetResults:
-			results["datasets"] = datasets
+			results["dataset"] = datasets
 		case tools := <-toolResults:
-			results["tools"] = tools
+			results["tool"] = tools
 		case collections := <-collectionResults:
-			results["collections"] = collections
+			results["collection"] = collections
 		case data_uses := <-dataUseResults:
-			results["data_uses"] = data_uses
+			results["dataUseRegister"] = data_uses
 		}
 	}
 
@@ -106,7 +133,7 @@ func datasetSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("datasets"),
+		ElasticClient.Search.WithIndex("dataset"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -166,6 +193,31 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 	}
 
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["dataset"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
+	agg1 := gin.H{
+		"publisherName": gin.H{
+			"terms": gin.H{"field": "publisherName", "size": 100},
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -180,7 +232,7 @@ func datasetElasticConfig(query Query) gin.H {
 					"fragment_size": 0,
 					"no_match_size": 0,
 				},
-				"abstract":       gin.H{
+				"abstract": gin.H{
 					"boundary_scanner": "sentence",
 					"fragment_size": 0,
 					"no_match_size": 0,
@@ -188,6 +240,8 @@ func datasetElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
+		"aggs": agg1,
 	}
 }
 
@@ -217,7 +271,7 @@ func toolSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("tools"),
+		ElasticClient.Search.WithIndex("tool"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -273,6 +327,26 @@ func toolsElasticConfig(query Query) gin.H {
 			"boost":  2,
 		},
 	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["tool"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -295,6 +369,7 @@ func toolsElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
 	}
 }
 
@@ -324,7 +399,7 @@ func collectionSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("collections"),
+		ElasticClient.Search.WithIndex("collection"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -382,6 +457,26 @@ func collectionsElasticConfig(query Query) gin.H {
 			"boost":  3,
 		},
 	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["collection"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -409,6 +504,7 @@ func collectionsElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
 	}
 }
 
@@ -438,7 +534,7 @@ func dataUseSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("data_uses"),
+		ElasticClient.Search.WithIndex("dataUseRegister"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -494,6 +590,26 @@ func dataUseElasticConfig(query Query) gin.H {
 			"boost":  2,
 		},
 	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["dataUseRegister"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -511,6 +627,7 @@ func dataUseElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
 	}
 }
 
@@ -518,9 +635,9 @@ func dataUseElasticConfig(query Query) gin.H {
 func stripExplanation(elasticResp SearchResponse) {
 	var explanations []map[string]interface{}
 
-	for i, hit := range elasticResp.Hits["hits"] {
+	for i, hit := range elasticResp.Hits.Hits {
 		explanations = append(explanations, hit.Explanation)
-		elasticResp.Hits["hits"][i].Explanation = make(map[string]interface{}, 0)
+		elasticResp.Hits.Hits[i].Explanation = make(map[string]interface{}, 0)
 	}
 
 	// TO DO - send explanations to BigQuery
