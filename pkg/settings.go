@@ -18,7 +18,7 @@ import (
 // collection of the elastic deployment.
 func DefineDatasetSettings(c *gin.Context) {
 	// Elastic requires the index to be closed before settings are updated
-	closeIndexByName("datasets")
+	closeIndexByName("dataset")
 
 	var buf bytes.Buffer
 	elasticSettings := gin.H{
@@ -51,7 +51,7 @@ func DefineDatasetSettings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
-		Index:      []string{"datasets"},
+		Index:      []string{"dataset"},
 		Body:       &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
@@ -68,7 +68,7 @@ func DefineDatasetSettings(c *gin.Context) {
 	json.Unmarshal(body, &resp)
 
 	// Reopen the index
-	openIndexByName("datasets")
+	openIndexByName("dataset")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -91,7 +91,7 @@ func DefineDatasetMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "datasets",
+		Index:      "dataset",
 		Body:       &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
@@ -116,7 +116,7 @@ func DefineDatasetMappings(c *gin.Context) {
 // field of the tools data. 
 func DefineToolSettings(c *gin.Context) {
 	// Elastic requires the index to be closed before settings are updated
-	closeIndexByName("tools")
+	closeIndexByName("tool")
 
 	var buf bytes.Buffer
 	elasticSettings := gin.H{
@@ -136,7 +136,7 @@ func DefineToolSettings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
-		Index:      []string{"tools"},
+		Index:      []string{"tool"},
 		Body:       &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
@@ -166,7 +166,7 @@ func DefineToolSettings(c *gin.Context) {
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
-		Index:      []string{"tools"},
+		Index:      []string{"tool"},
 		Body:       &mappings,
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
@@ -183,7 +183,7 @@ func DefineToolSettings(c *gin.Context) {
 	json.Unmarshal(mappingsBody, &mappingResp)
 
 	// Reopen the index
-	openIndexByName("tools")
+	openIndexByName("tool")
 
 	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
 }

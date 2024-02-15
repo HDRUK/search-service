@@ -16,42 +16,61 @@ type Aggregations struct {
 	Aggregations	map[string]interface{}	`json:"aggregations"`
 }
 
-func ListDatasetFilters(c *gin.Context) {
-	var buf bytes.Buffer
-
-	elasticQuery := datasetFiltersRequest()
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("datasets"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	c.JSON(http.StatusOK, elasticResp)
+type FilterRequest struct {
+	Filters	[]map[string]interface{} `json:"filters"`
 }
 
-func datasetFiltersRequest() gin.H {
+func ListFilters(c *gin.Context) {
+	var filterRequest FilterRequest
+	if err := c.BindJSON(&filterRequest); err != nil {
+		log.Printf("Could not bind filter request: %s", c.Request.Body)
+	}
+
+	var allFilters []gin.H
+
+	for _, filter := range(filterRequest.Filters) {
+		var buf bytes.Buffer
+		elasticQuery := filtersRequest(filter)
+		if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+			log.Fatal(err.Error())
+		}
+
+		filterType, ok := filter["type"].(string)
+		if !ok {
+			log.Printf("Filter type in %s not recognised", filter)
+		}
+
+		response, err := ElasticClient.Search(
+			ElasticClient.Search.WithIndex(filter["type"].(string)),
+			ElasticClient.Search.WithBody(&buf),
+		)
+
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		defer response.Body.Close()
+	
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		var elasticResp SearchResponse
+		json.Unmarshal(body, &elasticResp)
+
+		allFilters = append(allFilters, gin.H{filterType: elasticResp.Aggregations})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"filters": allFilters})
+}
+
+func filtersRequest(filter map[string]interface{}) gin.H {
 	return gin.H{
 		"size": 0,
 		"aggs": gin.H{
-			"publisherName": gin.H{
+			filter["keys"].(string) : gin.H{
 				"terms": gin.H{
-					"field": "publisherName", 
+					"field": filter["keys"].(string), 
 					"size":100,
 			  	},
 			},

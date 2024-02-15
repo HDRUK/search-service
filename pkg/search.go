@@ -26,7 +26,7 @@ func DefineElasticClient() {
 // Expecting filters to be e.g. "filters": {"publisherName": ["SAIL", "BREATHE"],"geographicLocation": ["England", "Wales"]}
 type Query struct {
 	QueryString string `json:"query"`
-	Filters map[string][]interface{}
+	Filters map[string]map[string][]interface{} `json:"filters"`
 }
 
 // SearchResponse represents the expected structure of results returned by ElasticSearch
@@ -76,13 +76,13 @@ func SearchGeneric(c *gin.Context) {
 	for i := 0; i < 4; i++ {
 		select {
 		case datasets := <-datasetResults:
-			results["datasets"] = datasets
+			results["dataset"] = datasets
 		case tools := <-toolResults:
-			results["tools"] = tools
+			results["tool"] = tools
 		case collections := <-collectionResults:
-			results["collections"] = collections
+			results["collection"] = collections
 		case data_uses := <-dataUseResults:
-			results["data_uses"] = data_uses
+			results["dataUseRegister"] = data_uses
 		}
 	}
 
@@ -115,7 +115,7 @@ func datasetSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("datasets"),
+		ElasticClient.Search.WithIndex("dataset"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -175,16 +175,22 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 	}
 
-	filters := []gin.H{}
-	for key, terms := range(query.Filters) {
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["dataset"]) {
+		filters := []gin.H{}
 		for _, t := range(terms) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
 	}
 
 	f1 := gin.H{
 		"bool": gin.H{
-			"should": filters,
+			"must": mustFilters,
 		},
 	}
 
@@ -247,7 +253,7 @@ func toolSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("tools"),
+		ElasticClient.Search.WithIndex("tool"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -303,6 +309,26 @@ func toolsElasticConfig(query Query) gin.H {
 			"boost":  2,
 		},
 	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["tool"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -325,6 +351,7 @@ func toolsElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
 	}
 }
 
@@ -354,7 +381,7 @@ func collectionSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("collections"),
+		ElasticClient.Search.WithIndex("collection"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -412,6 +439,26 @@ func collectionsElasticConfig(query Query) gin.H {
 			"boost":  3,
 		},
 	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["collection"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -439,6 +486,7 @@ func collectionsElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
 	}
 }
 
@@ -468,7 +516,7 @@ func dataUseSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("data_uses"),
+		ElasticClient.Search.WithIndex("dataUseRegister"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -524,6 +572,26 @@ func dataUseElasticConfig(query Query) gin.H {
 			"boost":  2,
 		},
 	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["dataUseRegister"]) {
+		filters := []gin.H{}
+		for _, t := range(terms) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
 	return gin.H{
 		"size": 100,
 		"query": gin.H{
@@ -541,6 +609,7 @@ func dataUseElasticConfig(query Query) gin.H {
 			},
 		},
 		"explain": true,
+		"post_filter": f1,
 	}
 }
 
