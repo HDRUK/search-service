@@ -112,6 +112,7 @@ func DatasetSearch(c *gin.Context) {
 	if err := c.BindJSON(&query); err != nil {
 		return
 	}
+
 	results := datasetSearch(query)
 	c.JSON(http.StatusOK, results)
 }
@@ -157,40 +158,52 @@ func datasetSearch(query Query) SearchResponse {
 
 // datasetElasticConfig defines the body of the query to the elastic datasets index
 func datasetElasticConfig(query Query) gin.H {
-	searchableFields := []string{
-		"abstract",
-		"keywords",
-		"description",
-		"shortTitle",
-		"title",
-		"publisher_name",
-		"named_entities",
-	}
-	mm1 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-			"analyzer": "medterms_analyzer",
-		},
-	}
-	mm2 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-			"analyzer": "medterms_analyzer",
-			"operator":  "and",
-		},
-	}
-	mm3 := gin.H{
-		"multi_match": gin.H{
-			"query":  query.QueryString,
-			"type":   "phrase",
-			"fields": searchableFields,
-			"analyzer": "medterms_analyzer",
-			"boost":  2,
-		},
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		searchableFields := []string{
+			"abstract",
+			"keywords",
+			"description",
+			"shortTitle",
+			"title",
+			"publisher_name",
+			"named_entities",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"analyzer": "medterms_analyzer",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"analyzer": "medterms_analyzer",
+				"operator":  "and",
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"type":   "phrase",
+				"fields": searchableFields,
+				"analyzer": "medterms_analyzer",
+				"boost":  2,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
 	}
 
 	mustFilters := []gin.H{}
@@ -220,11 +233,7 @@ func datasetElasticConfig(query Query) gin.H {
 
 	return gin.H{
 		"size": 100,
-		"query": gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
-		},
+		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"description": gin.H{
@@ -295,37 +304,49 @@ func toolSearch(query Query) SearchResponse {
 
 // toolsElasticConfig defines the body of the query to the elastic tools index
 func toolsElasticConfig(query Query) gin.H {
-	searchableFields := []string{
-		"tags",
-		"programmingLanguage",
-		"name",
-		"link",
-		"description",
-		"resultsInsights",
-		"license",
-	}
-	mm1 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-		},
-	}
-	mm2 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-			"operator":  "and",
-		},
-	}
-	mm3 := gin.H{
-		"multi_match": gin.H{
-			"query":  query.QueryString,
-			"fields": searchableFields,
-			"type":   "phrase",
-			"boost":  2,
-		},
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		searchableFields := []string{
+			"tags",
+			"programmingLanguage",
+			"name",
+			"link",
+			"description",
+			"resultsInsights",
+			"license",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"operator":  "and",
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"fields": searchableFields,
+				"type":   "phrase",
+				"boost":  2,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
 	}
 
 	mustFilters := []gin.H{}
@@ -349,11 +370,7 @@ func toolsElasticConfig(query Query) gin.H {
 
 	return gin.H{
 		"size": 100,
-		"query": gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
-		},
+		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"name":        gin.H{
@@ -423,39 +440,51 @@ func collectionSearch(query Query) SearchResponse {
 
 // collectionsElasticConfig defines the body of the query to the elastic collections index
 func collectionsElasticConfig(query Query) gin.H {
-	relatedObjectFields := []string{
-		"relatedObjects.keywords",
-		"relatedObjects.title",
-		"relatedObjects.name",
-		"relatedObjects.description",
-	}
-	searchableFields := []string{
-		"description",
-		"name",
-		"keywords",
-	}
-	mm1 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    relatedObjectFields,
-			"fuzziness": "AUTO:5,7",
-		},
-	}
-	mm2 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-			"boost":     2,
-		},
-	}
-	mm3 := gin.H{
-		"multi_match": gin.H{
-			"query":  query.QueryString,
-			"type":   "phrase",
-			"fields": searchableFields,
-			"boost":  3,
-		},
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		relatedObjectFields := []string{
+			"relatedObjects.keywords",
+			"relatedObjects.title",
+			"relatedObjects.name",
+			"relatedObjects.description",
+		}
+		searchableFields := []string{
+			"description",
+			"name",
+			"keywords",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    relatedObjectFields,
+				"fuzziness": "AUTO:5,7",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"boost":     2,
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"type":   "phrase",
+				"fields": searchableFields,
+				"boost":  3,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
 	}
 
 	mustFilters := []gin.H{}
@@ -479,11 +508,7 @@ func collectionsElasticConfig(query Query) gin.H {
 
 	return gin.H{
 		"size": 100,
-		"query": gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
-		},
+		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"description": gin.H{
@@ -558,37 +583,49 @@ func dataUseSearch(query Query) SearchResponse {
 
 // dataUseElasticConfig defines the body of the query to the elastic data uses index
 func dataUseElasticConfig(query Query) gin.H {
-	searchableFields := []string{
-		"projectTitle",
-		"laySummary",
-		"publicBenefitStatement",
-		"technicalSummary",
-		"fundersAndSponsors",
-		"datasetTitles",
-		"keywords",
-	}
-	mm1 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-		},
-	}
-	mm2 := gin.H{
-		"multi_match": gin.H{
-			"query":     query.QueryString,
-			"fields":    searchableFields,
-			"fuzziness": "AUTO:5,7",
-			"operator":  "and",
-		},
-	}
-	mm3 := gin.H{
-		"multi_match": gin.H{
-			"query":  query.QueryString,
-			"fields": searchableFields,
-			"type":   "phrase",
-			"boost":  2,
-		},
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		searchableFields := []string{
+			"projectTitle",
+			"laySummary",
+			"publicBenefitStatement",
+			"technicalSummary",
+			"fundersAndSponsors",
+			"datasetTitles",
+			"keywords",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"operator":  "and",
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"fields": searchableFields,
+				"type":   "phrase",
+				"boost":  2,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
 	}
 
 	mustFilters := []gin.H{}
@@ -612,11 +649,7 @@ func dataUseElasticConfig(query Query) gin.H {
 
 	return gin.H{
 		"size": 100,
-		"query": gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
-		},
+		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"laySummary": gin.H{
