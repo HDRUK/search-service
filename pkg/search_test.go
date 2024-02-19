@@ -41,6 +41,17 @@ func MockPostToSearch(c *gin.Context) {
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 }
 
+func MockPostToSimilarSearch(c *gin.Context) {
+	c.Request.Method = "POST"
+	c.Request.Header.Set("Content-Type", "application/json")
+	bodyContent := gin.H{"id": "1"}
+	bodyBytes, err := json.Marshal(bodyContent)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+}
+
 func TestSearchGeneric(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
@@ -139,6 +150,28 @@ func TestDataUseSearch(t *testing.T) {
 	MockPostToSearch(c)
 
 	DataUseSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp map[string]interface{}
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.Contains(t, testResp, "hits")
+	assert.Contains(t, testResp, "took")
+	assert.EqualValues(t, 3, int(testResp["took"].(float64)))
+}
+
+func TestSimilarDatasetSearch(t *testing.T) {
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToSimilarSearch(c)
+
+	SearchSimilarDatasets(c)
 
 	assert.EqualValues(t, http.StatusOK, w.Code)
 
