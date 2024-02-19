@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -63,7 +64,7 @@ func ListFilters(c *gin.Context) {
 		}
 
 		response, err := ElasticClient.Search(
-			ElasticClient.Search.WithIndex(filter["type"].(string)),
+			ElasticClient.Search.WithIndex(strings.ToLower(filterType)),
 			ElasticClient.Search.WithBody(&buf),
 		)
 
@@ -93,7 +94,7 @@ func filtersRequest(filter map[string]interface{}) gin.H {
 			filter["keys"].(string) : gin.H{
 				"terms": gin.H{
 					"field": filter["keys"].(string), 
-					"size":100,
+					"size":1000,
 			  	},
 			},
 		},
