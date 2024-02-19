@@ -227,7 +227,10 @@ func datasetElasticConfig(query Query) gin.H {
 
 	agg1 := gin.H{
 		"publisherName": gin.H{
-			"terms": gin.H{"field": "publisherName", "size": 100},
+			"terms": gin.H{"field": "publisherName", "size": 1000},
+		},
+		"dataUseTitles": gin.H{
+			"terms": gin.H{"field": "dataUseTitles", "size": 1000},
 		},
 	}
 
@@ -387,6 +390,7 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
+		"aggs": gin.H{},
 	}
 }
 
@@ -530,6 +534,7 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
+		"aggs": gin.H{},
 	}
 }
 
@@ -559,7 +564,7 @@ func dataUseSearch(query Query) SearchResponse {
 	}
 
 	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("dataUseRegister"),
+		ElasticClient.Search.WithIndex("datauseregister"),
 		ElasticClient.Search.WithBody(&buf),
 	)
 
@@ -629,7 +634,7 @@ func dataUseElasticConfig(query Query) gin.H {
 	}
 
 	mustFilters := []gin.H{}
-	for key, terms := range(query.Filters["dataUseRegister"]) {
+	for key, terms := range(query.Filters["datauseregister"]) {
 		filters := []gin.H{}
 		for _, t := range(terms) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
@@ -661,6 +666,7 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
+		"aggs": gin.H{},
 	}
 }
 
