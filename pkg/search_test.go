@@ -187,3 +187,55 @@ func TestSimilarDatasetSearch(t *testing.T) {
 	assert.Contains(t, testResp, "took")
 	assert.EqualValues(t, 3, int(testResp["took"].(float64)))
 }
+
+func TestDatasetElasticConfig(t *testing.T) {
+	TestQuery := Query{
+		QueryString: "search term test",
+		Filters: map[string]map[string][]interface{}{
+			"dataset": {
+				"publisherName": []interface{}{
+					"publisher A",
+					"publisher B",
+				},
+				"dataType": []interface{}{
+					"data type A",
+				},
+			},
+		},
+		Aggregations: []map[string]interface{}{
+			{
+				"type": "dataset",
+				"keys": "publisherName",
+			},
+			{
+				"type": "dataset",
+				"keys": "dataType",
+			},
+		},
+	}
+
+	datasetConfig := datasetElasticConfig(TestQuery)
+
+	// assert query clause exists and that it contains query term
+	assert.Contains(t, datasetConfig, "query")
+	queryJson, _ := json.Marshal(datasetConfig)
+	queryStr := string(queryJson)
+	assert.Contains(t, queryStr, "search term test")
+
+	// assert filter clause exists and contains boolean query
+	assert.Contains(t, datasetConfig, "post_filter")
+	filterClause := datasetConfig["post_filter"].(gin.H)
+	assert.Contains(t, filterClause, "bool")
+	assert.Contains(t, filterClause["bool"], "must")
+
+	// assert specific filter keys are included
+	assert.Contains(t, queryStr, "\"publisherName\":\"publisher A\"")
+	assert.Contains(t, queryStr, "\"publisherName\":\"publisher B\"")
+	assert.Contains(t, queryStr, "\"dataType\":\"data type A\"")
+	
+	// assert aggregations clause exists and contains specific keys
+	assert.Contains(t, datasetConfig, "aggs")
+	aggsClause := datasetConfig["aggs"].(gin.H)
+	assert.Contains(t, aggsClause, "publisherName")
+	assert.Contains(t, aggsClause, "dataType")
+}

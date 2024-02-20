@@ -45,6 +45,7 @@ where:
 type Query struct {
 	QueryString string `json:"query"`
 	Filters map[string]map[string][]interface{} `json:"filters"`
+	Aggregations	[]map[string]interface{}	`json:"aggs"`
 }
 
 type SimilarSearch struct {
@@ -229,14 +230,7 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := gin.H{
-		"publisherName": gin.H{
-			"terms": gin.H{"field": "publisherName", "size": 1000},
-		},
-		"dataUseTitles": gin.H{
-			"terms": gin.H{"field": "dataUseTitles", "size": 1000},
-		},
-	}
+	agg1 := buildAggregations(query)
 
 	return gin.H{
 		"size": 100,
@@ -375,6 +369,8 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 	}
 
+	agg1 := buildAggregations(query)
+
 	return gin.H{
 		"size": 100,
 		"query": mainQuery,
@@ -394,7 +390,7 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
-		"aggs": gin.H{},
+		"aggs": agg1,
 	}
 }
 
@@ -514,6 +510,8 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 	}
 
+	agg1 := buildAggregations(query)
+
 	return gin.H{
 		"size": 100,
 		"query": mainQuery,
@@ -538,7 +536,7 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
-		"aggs": gin.H{},
+		"aggs": agg1,
 	}
 }
 
@@ -656,6 +654,8 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 	}
 
+	agg1 := buildAggregations(query)
+
 	return gin.H{
 		"size": 100,
 		"query": mainQuery,
@@ -670,8 +670,23 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
-		"aggs": gin.H{},
+		"aggs": agg1,
 	}
+}
+
+// buildAggregations constructs the "aggs" part of an elastic search query
+// from provided Aggregations.
+// Aggregations are expected to be an array of `{'type': string, 'keys': string}`
+func buildAggregations(query Query) gin.H {
+	agg1 := gin.H{}
+	for _, agg := range(query.Aggregations) {
+		k, ok := agg["keys"].(string)
+		if !ok {
+			log.Printf("Filter key in %s not recognised", agg)
+		}
+		agg1[k] = gin.H{"terms": gin.H{"field": k, "size": 1000}}
+	}
+	return agg1
 }
 
 // Remove the explanations from a SearchResponse to reduce its size
