@@ -29,6 +29,7 @@ func main() {
 	router.POST("/settings/tools", search.DefineToolSettings)
 	router.POST("/mappings/datasets", search.DefineDatasetMappings)
 	router.POST("/filters", search.ListFilters)
+	router.POST("/similar/datasets", search.SearchSimilarDatasets)
 
 	router.Run(os.Getenv("SEARCHSERVICE_HOST"))
 }

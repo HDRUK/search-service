@@ -47,6 +47,10 @@ type Query struct {
 	Filters map[string]map[string][]interface{} `json:"filters"`
 }
 
+type SimilarSearch struct {
+	ID	string	`json:"id"`
+}
+
 // SearchResponse represents the expected structure of results returned by ElasticSearch
 type SearchResponse struct {
 	Took     int                    `json:"took"`
@@ -680,4 +684,55 @@ func stripExplanation(elasticResp SearchResponse) {
 	}
 
 	// TO DO - send explanations to BigQuery
+}
+
+// SearchSimilarDatasets returns the top 3 datasets similar to the document with
+// the provided id.
+func SearchSimilarDatasets(c *gin.Context) {
+	var querySimilar SimilarSearch
+	if err := c.BindJSON(&querySimilar); err != nil {
+		return
+	}
+
+	results := similarSearch(querySimilar.ID, "dataset")
+	c.JSON(http.StatusOK, results)
+}
+
+func similarSearch(id string, index string) SearchResponse {
+	var buf bytes.Buffer
+
+	elasticQuery := gin.H{
+		"size": 3,
+		"query": gin.H{
+			"more_like_this": gin.H{
+				"like": []gin.H{
+					{"_index": index, "_id": id},
+				},
+			},
+		},
+	}
+
+	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+		log.Fatal(err.Error())
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex(index),
+		ElasticClient.Search.WithBody(&buf),
+	)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var elasticResp SearchResponse
+	json.Unmarshal(body, &elasticResp)
+
+	return elasticResp
 }
