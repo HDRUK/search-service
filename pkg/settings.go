@@ -189,6 +189,124 @@ func DefineToolSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
 }
 
+
+// DefineCollectionSettings updates the settings of the collections index in elastic to use
+// a custom similarity scoring algorithm.  The mappings of the collections index are 
+// updated so that the custom similarity algorithm is applied to the description
+// field of the collection data. 
+func DefineCollectionSettings(c *gin.Context) {
+	// Elastic requires the index to be closed before settings are updated
+	closeIndexByName("collection")
+
+	var buf bytes.Buffer
+	elasticSettings := gin.H{
+		"settings": gin.H{
+			"index": gin.H{
+				"similarity": gin.H{
+					"custom_similarity": gin.H{
+				  		"type": "BM25",
+				  		"b": 0.1,
+					},
+				},
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
+		fmt.Println(err.Error())
+	}
+
+	request := esapi.IndicesPutSettingsRequest{
+		Index:      []string{"collection"},
+		Body:       &buf,
+	}
+	response, err := request.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(body, &resp)
+
+	var mappings bytes.Buffer
+	elasticMappings := gin.H{
+		"properties" : gin.H{
+			"description" : gin.H{
+				"type" : "text", 
+				"similarity" : "custom_similarity",
+			},
+		},
+	}
+	if err := json.NewEncoder(&mappings).Encode(elasticMappings); err != nil {
+		fmt.Println(err.Error())
+	}
+
+	mappingsRequest := esapi.IndicesPutMappingRequest{
+		Index:      []string{"collection"},
+		Body:       &mappings,
+	}
+	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		c.JSON(mappingsResponse.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer mappingsResponse.Body.Close()
+	mappingsBody, err := io.ReadAll(mappingsResponse.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	var mappingResp map[string]interface{}
+	json.Unmarshal(mappingsBody, &mappingResp)
+
+	// Reopen the index
+	openIndexByName("collection")
+
+	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
+}
+
+
+// DefineCollectionMappings initialises the datasets index and defines the custom
+// mappings for specific fields which need to be used as filters.
+// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// requires reindexing.
+func DefineCollectionMappings(c *gin.Context) {
+	var buf bytes.Buffer
+	elasticMappings := gin.H{
+		"mappings": gin.H{
+			"properties": gin.H{
+				"publisherName": gin.H{"type": "keyword"},
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
+		fmt.Println(err.Error())
+	}
+
+	request := esapi.IndicesCreateRequest{
+		Index:      "collection",
+		Body:       &buf,
+	}
+	response, err := request.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(body, &resp)
+
+	c.JSON(http.StatusOK, resp)
+}
+
+
 // closeIndexByName closes the elastic index matching the provided name.
 func closeIndexByName(indexName string) {
 	closeIndexRequest := esapi.IndicesCloseRequest{
