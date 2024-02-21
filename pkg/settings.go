@@ -190,7 +190,7 @@ func DefineToolSettings(c *gin.Context) {
 }
 
 
-// DefineToolSettings updates the settings of the collections index in elastic to use
+// DefineCollectionSettings updates the settings of the collections index in elastic to use
 // a custom similarity scoring algorithm.  The mappings of the collections index are 
 // updated so that the custom similarity algorithm is applied to the description
 // field of the collection data. 
@@ -216,7 +216,7 @@ func DefineCollectionSettings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
-		Index:      []string{"tool"},
+		Index:      []string{"collection"},
 		Body:       &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
@@ -246,7 +246,7 @@ func DefineCollectionSettings(c *gin.Context) {
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
-		Index:      []string{"tool"},
+		Index:      []string{"collection"},
 		Body:       &mappings,
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
