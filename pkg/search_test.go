@@ -200,6 +200,10 @@ func TestDatasetElasticConfig(t *testing.T) {
 				"dataType": []interface{}{
 					"data type A",
 				},
+				"dateRange": []interface{}{
+					"2020",
+					"2021",
+				},
 			},
 		},
 		Aggregations: []map[string]interface{}{
@@ -232,6 +236,8 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, queryStr, "\"publisherName\":\"publisher A\"")
 	assert.Contains(t, queryStr, "\"publisherName\":\"publisher B\"")
 	assert.Contains(t, queryStr, "\"dataType\":\"data type A\"")
+	assert.Contains(t, queryStr, "\"lte\":\"2021\"")
+	assert.Contains(t, queryStr, "\"gte\":\"2020\"")
 	
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, datasetConfig, "aggs")
