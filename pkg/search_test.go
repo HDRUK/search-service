@@ -191,7 +191,7 @@ func TestSimilarDatasetSearch(t *testing.T) {
 func TestDatasetElasticConfig(t *testing.T) {
 	TestQuery := Query{
 		QueryString: "search term test",
-		Filters: map[string]map[string][]interface{}{
+		Filters: map[string]map[string]interface{}{
 			"dataset": {
 				"publisherName": []interface{}{
 					"publisher A",
@@ -204,6 +204,11 @@ func TestDatasetElasticConfig(t *testing.T) {
 					"2020",
 					"2021",
 				},
+				"populationSize": map[string]interface{}{
+					"includeUnreported": true,
+					"from": 1000,
+					"to": 10000,
+				},
 			},
 		},
 		Aggregations: []map[string]interface{}{
@@ -214,6 +219,10 @@ func TestDatasetElasticConfig(t *testing.T) {
 			{
 				"type": "dataset",
 				"keys": "dataType",
+			},
+			{
+				"type": "dataset",
+				"keys": "populationSize",
 			},
 		},
 	}
@@ -238,10 +247,14 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, queryStr, "\"dataType\":\"data type A\"")
 	assert.Contains(t, queryStr, "\"lte\":\"2021\"")
 	assert.Contains(t, queryStr, "\"gte\":\"2020\"")
+	assert.Contains(t, queryStr, "\"lte\":10000")
+	assert.Contains(t, queryStr, "\"gte\":1000")
+	assert.Contains(t, queryStr, "\"populationSize\":-1")
 	
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, datasetConfig, "aggs")
 	aggsClause := datasetConfig["aggs"].(gin.H)
 	assert.Contains(t, aggsClause, "publisherName")
 	assert.Contains(t, aggsClause, "dataType")
+	assert.Contains(t, aggsClause, "populationSize")
 }
