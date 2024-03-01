@@ -62,6 +62,10 @@ func ListFilters(c *gin.Context) {
 		if !ok {
 			log.Printf("Filter type in %s not recognised", filter)
 		}
+		filterKey, ok := filter["keys"].(string)
+		if !ok {
+			log.Printf("Filter keys in %s not recognised", filter)
+		}
 
 		response, err := ElasticClient.Search(
 			ElasticClient.Search.WithIndex(strings.ToLower(filterType)),
@@ -81,22 +85,73 @@ func ListFilters(c *gin.Context) {
 		var elasticResp SearchResponse
 		json.Unmarshal(body, &elasticResp)
 
-		allFilters = append(allFilters, gin.H{filterType: elasticResp.Aggregations})
+		if (filterKey == "dateRange") {
+			startValue := elasticResp.Aggregations["startDate"].(map[string]interface{})["value_as_string"]
+			endValue := elasticResp.Aggregations["endDate"].(map[string]interface{})["value_as_string"]
+			allFilters = append(allFilters, gin.H{
+				filterType: gin.H{
+					"dateRange": gin.H{
+						"buckets": []gin.H{
+							{
+								"key": "startDate",
+								"value": startValue,
+							},
+							{	
+								"key": "endDate",
+								"value": endValue,
+							},
+						},
+					},
+				},
+			})
+		} else {
+			allFilters = append(allFilters, gin.H{filterType: elasticResp.Aggregations})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"filters": allFilters})
 }
 
 func filtersRequest(filter map[string]interface{}) gin.H {
-	return gin.H{
-		"size": 0,
-		"aggs": gin.H{
-			filter["keys"].(string) : gin.H{
-				"terms": gin.H{
-					"field": filter["keys"].(string), 
-					"size":1000,
-			  	},
-			},
-		},
+	filterKey, ok := filter["keys"].(string)
+	var aggs gin.H
+	if !ok {
+		log.Printf("Filter key in %s not recognised", filter["keys"])
 	}
+	if (filterKey == "dateRange") {
+		aggs = gin.H{
+			"size": 0,
+			"aggs": gin.H{
+				"startDate": gin.H{
+					"min": gin.H{"field": "startDate"},
+				},
+				"endDate": gin.H{
+					"max": gin.H{"field": "endDate"},
+				},
+			},
+		}
+	} else if (filterKey == "populationSize") {
+		ranges := populationRanges()
+		aggs = gin.H{
+			"size":0,
+			"aggs": gin.H{
+				"populationSize": gin.H{
+					"range": gin.H{"field": filterKey, "ranges": ranges},
+				},
+			},
+		}
+	} else {
+		aggs = gin.H{
+			"size": 0,
+			"aggs": gin.H{
+				filter["keys"].(string) : gin.H{
+					"terms": gin.H{
+						"field": filter["keys"].(string), 
+						"size":1000,
+					},
+				},
+			},
+		}
+	}
+	return aggs
 }

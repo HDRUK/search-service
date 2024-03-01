@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math"
 	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v8"
@@ -44,7 +45,8 @@ where:
 */
 type Query struct {
 	QueryString string `json:"query"`
-	Filters map[string]map[string][]interface{} `json:"filters"`
+	Filters map[string]map[string]interface{} `json:"filters"`
+	Aggregations	[]map[string]interface{}	`json:"aggs"`
 }
 
 type SimilarSearch struct {
@@ -213,14 +215,50 @@ func datasetElasticConfig(query Query) gin.H {
 	mustFilters := []gin.H{}
 	for key, terms := range(query.Filters["dataset"]) {
 		filters := []gin.H{}
-		for _, t := range(terms) {
-			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		if (key == "dateRange") {
+			rangeFilter := gin.H{
+				"bool": gin.H{
+                    "must": []gin.H{
+                        {"range": gin.H{"startDate": gin.H{"lte": terms.([]interface{})[1]}}},
+                        {"range": gin.H{"endDate": gin.H{"gte": terms.([]interface{})[0]}}},
+					},
+                },
+			}
+			mustFilters = append(mustFilters, rangeFilter)
+		} else if (key == "populationSize") {
+			includeNull := terms.(map[string]interface{})["includeUnreported"].(bool)
+			from := terms.(map[string]interface{})["from"]
+			to := terms.(map[string]interface{})["to"]
+			var rangeFilter gin.H
+			if (includeNull) {
+				rangeFilter = gin.H{
+					"bool": gin.H{
+						"should": []gin.H{
+							{"range": gin.H{key: gin.H{"gte": from, "lte": to}}},
+							{"term": gin.H{"populationSize": -1}},
+						},
+					},
+				}
+			} else {
+				rangeFilter = gin.H{
+					"bool": gin.H{
+						"must": []gin.H{
+							{"range": gin.H{key: gin.H{"gte": from, "lte": to}}},
+						},
+					},
+				}
+			}
+			mustFilters = append(mustFilters, rangeFilter)
+		} else {
+			for _, t := range(terms.([]interface{})) {
+				filters = append(filters, gin.H{"term": gin.H{key: t}})
+			}
+			mustFilters = append(mustFilters, gin.H{
+				"bool": gin.H{
+					"should": filters,
+				},
+			})
 		}
-		mustFilters = append(mustFilters, gin.H{
-			"bool": gin.H{
-				"should": filters,
-			},
-		})
 	}
 
 	f1 := gin.H{
@@ -229,14 +267,7 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := gin.H{
-		"publisherName": gin.H{
-			"terms": gin.H{"field": "publisherName", "size": 1000},
-		},
-		"dataUseTitles": gin.H{
-			"terms": gin.H{"field": "dataUseTitles", "size": 1000},
-		},
-	}
+	agg1 := buildAggregations(query)
 
 	return gin.H{
 		"size": 100,
@@ -359,7 +390,7 @@ func toolsElasticConfig(query Query) gin.H {
 	mustFilters := []gin.H{}
 	for key, terms := range(query.Filters["tool"]) {
 		filters := []gin.H{}
-		for _, t := range(terms) {
+		for _, t := range(terms.([]interface{})) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
 		mustFilters = append(mustFilters, gin.H{
@@ -374,6 +405,8 @@ func toolsElasticConfig(query Query) gin.H {
 			"must": mustFilters,
 		},
 	}
+
+	agg1 := buildAggregations(query)
 
 	return gin.H{
 		"size": 100,
@@ -394,7 +427,7 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
-		"aggs": gin.H{},
+		"aggs": agg1,
 	}
 }
 
@@ -498,7 +531,7 @@ func collectionsElasticConfig(query Query) gin.H {
 	mustFilters := []gin.H{}
 	for key, terms := range(query.Filters["collection"]) {
 		filters := []gin.H{}
-		for _, t := range(terms) {
+		for _, t := range(terms.([]interface{})) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
 		mustFilters = append(mustFilters, gin.H{
@@ -513,6 +546,8 @@ func collectionsElasticConfig(query Query) gin.H {
 			"must": mustFilters,
 		},
 	}
+
+	agg1 := buildAggregations(query)
 
 	return gin.H{
 		"size": 100,
@@ -538,7 +573,7 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
-		"aggs": gin.H{},
+		"aggs": agg1,
 	}
 }
 
@@ -640,7 +675,7 @@ func dataUseElasticConfig(query Query) gin.H {
 	mustFilters := []gin.H{}
 	for key, terms := range(query.Filters["datauseregister"]) {
 		filters := []gin.H{}
-		for _, t := range(terms) {
+		for _, t := range(terms.([]interface{})) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
 		mustFilters = append(mustFilters, gin.H{
@@ -656,6 +691,8 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 	}
 
+	agg1 := buildAggregations(query)
+
 	return gin.H{
 		"size": 100,
 		"query": mainQuery,
@@ -670,8 +707,42 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 		"explain": true,
 		"post_filter": f1,
-		"aggs": gin.H{},
+		"aggs": agg1,
 	}
+}
+
+// buildAggregations constructs the "aggs" part of an elastic search query
+// from provided Aggregations.
+// Aggregations are expected to be an array of `{'type': string, 'keys': string}`
+func buildAggregations(query Query) gin.H {
+	agg1 := gin.H{}
+	for _, agg := range(query.Aggregations) {
+		k, ok := agg["keys"].(string)
+		if !ok {
+			log.Printf("Filter key in %s not recognised", agg)
+		}
+		if (k == "dateRange") {
+			agg1["startDate"] = gin.H{"min": gin.H{"field": "startDate"}}
+			agg1["endDate"] = gin.H{"max": gin.H{"field": "endDate"}}
+		} else if (k == "populationSize") {		
+			ranges := populationRanges()
+			agg1[k] = gin.H{
+				"range": gin.H{"field": k, "ranges": ranges},
+			}
+		} else {
+			agg1[k] = gin.H{"terms": gin.H{"field": k, "size": 1000}}
+		}
+	}
+	return agg1
+}
+
+func populationRanges() []gin.H {
+	var ranges []gin.H
+	ranges = append(ranges, gin.H{"from": -1.0, "to": 1.0, "key": "Unreported"})
+	for i:=0; i < 10; i++ {
+		ranges = append(ranges, gin.H{"from": math.Pow(10, float64(i)), "to": math.Pow(10, float64(i + 1))})
+	}
+	return ranges 
 }
 
 // Remove the explanations from a SearchResponse to reduce its size
