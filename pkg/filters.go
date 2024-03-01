@@ -130,6 +130,16 @@ func filtersRequest(filter map[string]interface{}) gin.H {
 				},
 			},
 		}
+	} else if (filterKey == "populationSize") {
+		ranges := populationRanges()
+		aggs = gin.H{
+			"size":0,
+			"aggs": gin.H{
+				"populationSize": gin.H{
+					"range": gin.H{"field": filterKey, "ranges": ranges},
+				},
+			},
+		}
 	} else {
 		aggs = gin.H{
 			"size": 0,
