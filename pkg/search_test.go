@@ -258,3 +258,68 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, aggsClause, "dataType")
 	assert.Contains(t, aggsClause, "populationSize")
 }
+
+func TestDataUseElasticConfig(t *testing.T) {
+	TestQuery := Query{
+		QueryString: "search term test",
+		Filters: map[string]map[string]interface{}{
+			"dataUseRegister": {
+				"sector": []interface{}{
+					"sector A",
+					"sector B",
+				},
+				"organisationName": []interface{}{
+					"organisation A",
+				},
+				"publisherName": []interface{}{
+					"publisher A",
+					"publisher A",
+				},
+				"datasetTitles": []interface{}{
+					"Title A",
+					"Title B",
+				},
+			},
+		},
+		Aggregations: []map[string]interface{}{
+			{
+				"type": "dataUseRegister",
+				"keys": "sector",
+			},
+			{
+				"type": "dataUseRegister",
+				"keys": "organisationName",
+			},
+			{
+				"type": "dataUseRegister",
+				"keys": "publisherName",
+			},
+			{
+				"type": "dataUseRegister",
+				"keys": "datasetTitles",
+			},
+		},
+	}
+
+	durConfig := dataUseElasticConfig(TestQuery)
+
+	// assert query clause exists and that it contains query term
+	assert.Contains(t, durConfig, "query")
+	queryJson, _ := json.Marshal(durConfig)
+	queryStr := string(queryJson)
+	assert.Contains(t, queryStr, "search term test")
+
+	// assert filter clause exists and contains boolean query
+	assert.Contains(t, durConfig, "post_filter")
+	filterClause := durConfig["post_filter"].(gin.H)
+	assert.Contains(t, filterClause, "bool")
+	assert.Contains(t, filterClause["bool"], "must")
+
+	// assert specific filter keys are included
+	assert.Contains(t, queryStr, "\"sector\":\"sector A\"")
+	
+	// assert aggregations clause exists and contains specific keys
+	assert.Contains(t, durConfig, "aggs")
+	aggsClause := durConfig["aggs"].(gin.H)
+	assert.Contains(t, aggsClause, "sector")
+}

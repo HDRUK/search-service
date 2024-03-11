@@ -673,7 +673,7 @@ func dataUseElasticConfig(query Query) gin.H {
 	}
 
 	mustFilters := []gin.H{}
-	for key, terms := range(query.Filters["datauseregister"]) {
+	for key, terms := range(query.Filters["dataUseRegister"]) {
 		filters := []gin.H{}
 		for _, t := range(terms.([]interface{})) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
