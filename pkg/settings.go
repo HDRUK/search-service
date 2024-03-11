@@ -308,6 +308,46 @@ func DefineCollectionMappings(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// DefineDataUseMappings initialises the datauseregister index and defines the custom
+// mappings for specific fields which need to be used as filters.
+// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// requires reindexing.
+func DefineDataUseMappings(c *gin.Context) {
+	var buf bytes.Buffer
+	elasticMappings := gin.H{
+		"mappings": gin.H{
+			"properties": gin.H{
+				"publisherName": gin.H{"type": "keyword"},
+				"sector": gin.H{"type": "keyword"},
+				"organisationName": gin.H{"type": "keyword"},
+				"datasetTitles": gin.H{"type": "keyword"},
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
+		fmt.Println(err.Error())
+	}
+
+	request := esapi.IndicesCreateRequest{
+		Index:      "datauseregister",
+		Body:       &buf,
+	}
+	response, err := request.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(body, &resp)
+
+	c.JSON(http.StatusOK, resp)
+}
+
 
 // closeIndexByName closes the elastic index matching the provided name.
 func closeIndexByName(indexName string) {
