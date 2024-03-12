@@ -488,10 +488,8 @@ func collectionsElasticConfig(query Query) gin.H {
 		}
 	} else {
 		relatedObjectFields := []string{
-			"relatedObjects.keywords",
-			"relatedObjects.title",
-			"relatedObjects.name",
-			"relatedObjects.description",
+			"datasetTitles",
+			"datasetAbstracts",
 		}
 		searchableFields := []string{
 			"description",

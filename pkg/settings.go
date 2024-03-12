@@ -281,6 +281,7 @@ func DefineCollectionMappings(c *gin.Context) {
 		"mappings": gin.H{
 			"properties": gin.H{
 				"publisherName": gin.H{"type": "keyword"},
+				"datasetTitles": gin.H{"type": "keyword"},
 			},
 		},
 	}

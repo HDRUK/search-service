@@ -259,6 +259,49 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, aggsClause, "populationSize")
 }
 
+func TestCollectionElasticConfig(t *testing.T) {
+	TestQuery := Query{
+		QueryString: "search term test",
+		Filters: map[string]map[string]interface{}{
+			"collection": {
+				"datasetTitles": []interface{}{
+					"title A",
+					"title B",
+				},
+			},
+		},
+		Aggregations: []map[string]interface{}{
+			{
+				"type": "collection",
+				"keys": "datasetTitles",
+			},
+		},
+	}
+
+	collectionConfig := collectionsElasticConfig(TestQuery)
+
+	// assert query clause exists and that it contains query term
+	assert.Contains(t, collectionConfig, "query")
+	queryJson, _ := json.Marshal(collectionConfig)
+	queryStr := string(queryJson)
+	assert.Contains(t, queryStr, "search term test")
+
+	// assert filter clause exists and contains boolean query
+	assert.Contains(t, collectionConfig, "post_filter")
+	filterClause := collectionConfig["post_filter"].(gin.H)
+	assert.Contains(t, filterClause, "bool")
+	assert.Contains(t, filterClause["bool"], "must")
+
+	// assert specific filter keys are included
+	assert.Contains(t, queryStr, "\"datasetTitles\":\"title A\"")
+	assert.Contains(t, queryStr, "\"datasetTitles\":\"title B\"")
+	
+	// assert aggregations clause exists and contains specific keys
+	assert.Contains(t, collectionConfig, "aggs")
+	aggsClause := collectionConfig["aggs"].(gin.H)
+	assert.Contains(t, aggsClause, "datasetTitles")
+}
+
 func TestDataUseElasticConfig(t *testing.T) {
 	TestQuery := Query{
 		QueryString: "search term test",
