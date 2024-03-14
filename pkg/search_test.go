@@ -73,6 +73,7 @@ func TestSearchGeneric(t *testing.T) {
 	assert.Contains(t, testResp, "tool")
 	assert.Contains(t, testResp, "collection")
 	assert.Contains(t, testResp, "dataUseRegister")
+	assert.Contains(t, testResp, "publication")
 
 	datasetResp := testResp["dataset"].(map[string]interface{})
 	assert.EqualValues(t, 3, int(datasetResp["took"].(float64)))
@@ -150,6 +151,28 @@ func TestDataUseSearch(t *testing.T) {
 	MockPostToSearch(c)
 
 	DataUseSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp map[string]interface{}
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.Contains(t, testResp, "hits")
+	assert.Contains(t, testResp, "took")
+	assert.EqualValues(t, 3, int(testResp["took"].(float64)))
+}
+
+func TestPublicationSearch(t *testing.T) {
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToSearch(c)
+
+	PublicationSearch(c)
 
 	assert.EqualValues(t, http.StatusOK, w.Code)
 
@@ -365,4 +388,66 @@ func TestDataUseElasticConfig(t *testing.T) {
 	assert.Contains(t, durConfig, "aggs")
 	aggsClause := durConfig["aggs"].(gin.H)
 	assert.Contains(t, aggsClause, "sector")
+}
+
+func TestPublicationElasticConfig(t *testing.T) {
+	TestQuery := Query{
+		QueryString: "search term test",
+		Filters: map[string]map[string]interface{}{
+			"paper": {
+				"publicationType": []interface{}{
+					"Type A",
+					"Type B",
+				},
+				"publicationDate": []interface{}{
+					"2020",
+					"2021",
+				},
+				"datasetTitles": []interface{}{
+					"Title A",
+					"Title B",
+				},
+			},
+		},
+		Aggregations: []map[string]interface{}{
+			{
+				"type": "publication",
+				"keys": "publicationType",
+			},
+			{
+				"type": "publication",
+				"keys": "publicationDate",
+			},
+			{
+				"type": "publication",
+				"keys": "datasetTitles",
+			},
+		},
+	}
+
+	pubConfig := publicationElasticConfig(TestQuery)
+
+	// assert query clause exists and that it contains query term
+	assert.Contains(t, pubConfig, "query")
+	queryJson, _ := json.Marshal(pubConfig)
+	queryStr := string(queryJson)
+	assert.Contains(t, queryStr, "search term test")
+
+	// assert filter clause exists and contains boolean query
+	assert.Contains(t, pubConfig, "post_filter")
+	filterClause := pubConfig["post_filter"].(gin.H)
+	assert.Contains(t, filterClause, "bool")
+	assert.Contains(t, filterClause["bool"], "must")
+
+	// assert specific filter keys are included
+	assert.Contains(t, queryStr, "\"publicationType\":\"Type A\"")
+	assert.Contains(t, queryStr, "\"lte\":\"2021\"")
+	assert.Contains(t, queryStr, "\"gte\":\"2020\"")
+	
+	// assert aggregations clause exists and contains specific keys
+	assert.Contains(t, pubConfig, "aggs")
+	aggsClause := pubConfig["aggs"].(gin.H)
+	assert.Contains(t, aggsClause, "publicationType")
+	assert.Contains(t, aggsClause, "startDate")
+	assert.Contains(t, aggsClause, "endDate")
 }
