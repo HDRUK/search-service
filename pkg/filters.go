@@ -62,13 +62,22 @@ func ListFilters(c *gin.Context) {
 		if !ok {
 			log.Printf("Filter type in %s not recognised", filter)
 		}
+		var index string
+		if (filterType == "dataUseRegister") {
+			index = strings.ToLower(filterType)
+		} else if (filterType == "paper") {
+			index = "publication"
+		} else {
+			index = filterType
+		}
+
 		filterKey, ok := filter["keys"].(string)
 		if !ok {
 			log.Printf("Filter keys in %s not recognised", filter)
 		}
 
 		response, err := ElasticClient.Search(
-			ElasticClient.Search.WithIndex(strings.ToLower(filterType)),
+			ElasticClient.Search.WithIndex(index),
 			ElasticClient.Search.WithBody(&buf),
 		)
 
@@ -85,12 +94,12 @@ func ListFilters(c *gin.Context) {
 		var elasticResp SearchResponse
 		json.Unmarshal(body, &elasticResp)
 
-		if (filterKey == "dateRange") {
+		if (filterKey == "dateRange") || (filterKey == "publicationDate") {
 			startValue := elasticResp.Aggregations["startDate"].(map[string]interface{})["value_as_string"]
 			endValue := elasticResp.Aggregations["endDate"].(map[string]interface{})["value_as_string"]
 			allFilters = append(allFilters, gin.H{
 				filterType: gin.H{
-					"dateRange": gin.H{
+					filterKey: gin.H{
 						"buckets": []gin.H{
 							{
 								"key": "startDate",
@@ -127,6 +136,18 @@ func filtersRequest(filter map[string]interface{}) gin.H {
 				},
 				"endDate": gin.H{
 					"max": gin.H{"field": "endDate"},
+				},
+			},
+		}
+	} else if (filterKey == "publicationDate") {
+		aggs = gin.H{
+			"size": 0,
+			"aggs": gin.H{
+				"startDate": gin.H{
+					"min": gin.H{"field": "publicationDate"},
+				},
+				"endDate": gin.H{
+					"max": gin.H{"field": "publicationDate"},
 				},
 			},
 		}

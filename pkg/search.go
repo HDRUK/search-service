@@ -89,6 +89,7 @@ func SearchGeneric(c *gin.Context) {
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
 	dataUseResults := make(chan SearchResponse)
+	publicationResults := make(chan SearchResponse)
 
 	results := make(map[string]interface{})
 
@@ -96,8 +97,9 @@ func SearchGeneric(c *gin.Context) {
 	go toolChannel(query, toolResults)
 	go collectionChannel(query, collectionResults)
 	go dataUseChannel(query, dataUseResults)
+	go publicationChannel(query, publicationResults)
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		select {
 		case datasets := <-datasetResults:
 			results["dataset"] = datasets
@@ -107,6 +109,8 @@ func SearchGeneric(c *gin.Context) {
 			results["collection"] = collections
 		case data_uses := <-dataUseResults:
 			results["dataUseRegister"] = data_uses
+		case publications := <-publicationResults:
+			results["publication"] = publications
 		}
 	}
 
@@ -709,6 +713,158 @@ func dataUseElasticConfig(query Query) gin.H {
 	}
 }
 
+func PublicationSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		return
+	}
+	results := publicationSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func publicationChannel(query Query, res chan SearchResponse) {
+	elasticResp := publicationSearch(query)
+	res <- elasticResp
+}
+
+// publicationSearch performs a search of the ElasticSearch publications index using
+// the provided query as the search term.  Results are returned in the format
+// returned by elastic (SearchResponse).
+// The publications index consists of the publications that are hosted on the 
+// Gateway - this is not a federated search.
+func publicationSearch(query Query) SearchResponse {
+	var buf bytes.Buffer
+
+	elasticQuery := publicationElasticConfig(query)
+	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+		log.Fatal(err.Error())
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex("publication"),
+		ElasticClient.Search.WithBody(&buf),
+	)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var elasticResp SearchResponse
+	json.Unmarshal(body, &elasticResp)
+
+	stripExplanation(elasticResp)
+
+	return elasticResp
+}
+
+// publicationElasticConfig defines the body of the query to the elastic publications index
+func publicationElasticConfig(query Query) gin.H {
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		searchableFields := []string{
+			"title",
+			"journalName",
+			"abstract",
+			"publicationType",
+			"authors",
+			"datasetTitles",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"operator":  "and",
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"fields": searchableFields,
+				"type":   "phrase",
+				"boost":  2,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
+	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["paper"]) {
+		filters := []gin.H{}
+		if (key == "publicationDate") {
+			rangeFilter := gin.H{
+				"bool": gin.H{
+					"must": []gin.H{
+						{"range": gin.H{"publicationDate": gin.H{"gte": terms.([]interface{})[0]}}},
+						{"range": gin.H{"publicationDate": gin.H{"lte": terms.([]interface{})[1]}}},
+					},
+				},
+			}
+			mustFilters = append(mustFilters, rangeFilter)
+		} else {
+			for _, t := range(terms.([]interface{})) {
+				filters = append(filters, gin.H{"term": gin.H{key: t}})
+			}
+			mustFilters = append(mustFilters, gin.H{
+				"bool": gin.H{
+					"should": filters,
+				},
+			})
+		}
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
+	agg1 := buildAggregations(query)
+
+	return gin.H{
+		"size": 100,
+		"query": mainQuery,
+		"highlight": gin.H{
+			"fields": gin.H{
+				"title": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+				"abstract": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size": 0,
+					"no_match_size": 0,
+				},
+			},
+		},
+		"explain": true,
+		"post_filter": f1,
+		"aggs": agg1,
+	}
+}
+
 // buildAggregations constructs the "aggs" part of an elastic search query
 // from provided Aggregations.
 // Aggregations are expected to be an array of `{'type': string, 'keys': string}`
@@ -722,6 +878,9 @@ func buildAggregations(query Query) gin.H {
 		if (k == "dateRange") {
 			agg1["startDate"] = gin.H{"min": gin.H{"field": "startDate"}}
 			agg1["endDate"] = gin.H{"max": gin.H{"field": "endDate"}}
+		} else if (k == "publicationDate") {
+			agg1["startDate"] = gin.H{"min": gin.H{"field": "publicationDate"}}
+			agg1["endDate"] = gin.H{"max": gin.H{"field": "publicationDate"}}
 		} else if (k == "populationSize") {		
 			ranges := populationRanges()
 			agg1[k] = gin.H{
