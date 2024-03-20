@@ -3,15 +3,18 @@
 ## Branwen Snelling <branwen.snelling@hdruk.ac.uk>
 ##
 
+load('ext://restart_process', 'docker_build_with_restart')
+
 cfg = read_json('tiltconf.json')
 
-docker_build(
+docker_build_with_restart(
     ref='hdruk/' + cfg.get('name'),
     context='.',
+    entrypoint=["./search-service"],
     live_update=[
         sync('.', '/app'),
         run('go mod download', trigger='./go.mod'),
-        run('go build --ldflags="-s -w" -o search_service'),
+        run('go build --ldflags="-s -w" -o search-service'),
     ]
 )
 
