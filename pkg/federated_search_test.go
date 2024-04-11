@@ -1,0 +1,210 @@
+package search
+
+import (
+	"bytes"
+	"encoding/json"
+	"hdruk/search-service/utils/mocks"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+)
+
+var epmcRespJson = `{
+	"version": "10.1",
+	"hitCount": 1,
+	"request": {
+		"queryString": "DOI:10.123/abc",
+		"resultType": "core",
+		"cursorMark": "*",
+		"pageSize": 25,
+		"sort": "",
+		"synonym": false
+	},
+	"resultList": {
+		"result": [
+			{
+				"id": "0000000",
+				"source": "MED",
+				"pmid": "000000",
+				"pmcid": "PMC000000",
+				"fullTextIdList": {
+					"fullTextId": [
+						"PMC000000"
+					]
+				},
+				"doi": "10.123/abc",
+				"title": "A publication",
+				"authorString": "Monday A, Tuesday B, Wednesday C",
+				"journalInfo": {
+					"journal": {
+						"title": "Journal of Health"
+					}
+				},
+				"pubYear": "2020",
+				"abstractText": "A longer description of the paper",
+				"pubTypeList": {
+					"pubType": [
+						"research-article",
+						"Journal Article"
+					]
+				}
+			}
+		]
+	}
+}`
+
+func init() {
+	Client = &mocks.MockClient{}
+}
+
+func MockPostToDOISearch(c *gin.Context) {
+	c.Request.Method = "POST"
+	c.Request.Header.Set("Content-Type", "application/json")
+	bodyContent := gin.H{"query": "https://doi.org/10.1010/a11-22(22)33v3"}
+	bodyBytes, err := json.Marshal(bodyContent)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+}
+
+func MockPostToFieldSearch(c *gin.Context) {
+	c.Request.Method = "POST"
+	c.Request.Header.Set("Content-Type", "application/json")
+	bodyContent := gin.H{
+		"query": "A Very Useful Dataset (AVUD)",
+		"field": "METHODS",
+	}
+	bodyBytes, err := json.Marshal(bodyContent)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+}
+
+func MockPostToMultiFieldSearch(c *gin.Context) {
+	c.Request.Method = "POST"
+	c.Request.Header.Set("Content-Type", "application/json")
+	bodyContent := gin.H{
+		"query": "A Very Useful Dataset (AVUD)",
+		"fields": []string{
+			"METHODS", "TABLE", "SUPPL",
+		},
+	}
+	bodyBytes, err := json.Marshal(bodyContent)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+}
+
+func TestExtractDOI(t *testing.T) {
+	doi := "https://doi.org/10.1010/a11-22(22)33v3"
+	extracted := extractDOI(doi)
+	expected := "10.1010/a11-22\\(22\\)33"
+	
+	assert.EqualValues(t, expected, extracted)
+
+	doiInvalid := "https://doi.org"
+	extractedInvalid := extractDOI(doiInvalid)
+	expectedInvalid := doiInvalid
+
+	assert.EqualValues(t, expectedInvalid, extractedInvalid)
+}
+
+func TestDOISearch(t *testing.T) {
+
+	mocks.GetDoFunc = func(req *http.Request) (*http.Response, error) {
+		// Create a reader with the GET json response
+		r := io.NopCloser(bytes.NewReader([]byte(epmcRespJson)))
+		return &http.Response{
+			StatusCode: 200,
+			Body:       r,
+		}, nil
+	}
+
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToDOISearch(c)
+
+	DOISearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp PMCCoreResponse
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.EqualValues(t, 1, int(testResp.HitCount))
+	assert.EqualValues(t, "0000000", testResp.ResultList["result"][0].ID)
+}
+
+func TestFieldSearch(t *testing.T) {
+
+	mocks.GetDoFunc = func(req *http.Request) (*http.Response, error) {
+		// Create a reader with the GET json response
+		r := io.NopCloser(bytes.NewReader([]byte(epmcRespJson)))
+		return &http.Response{
+			StatusCode: 200,
+			Body:       r,
+		}, nil
+	}
+
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToFieldSearch(c)
+
+	FieldSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp PMCCoreResponse
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.EqualValues(t, 1, int(testResp.HitCount))
+	assert.EqualValues(t, "0000000", testResp.ResultList["result"][0].ID)
+}
+
+func TestMultiFieldSearch(t *testing.T) {
+
+	mocks.GetDoFunc = func(req *http.Request) (*http.Response, error) {
+		// Create a reader with the GET json response
+		r := io.NopCloser(bytes.NewReader([]byte(epmcRespJson)))
+		return &http.Response{
+			StatusCode: 200,
+			Body:       r,
+		}, nil
+	}
+
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToMultiFieldSearch(c)
+
+	MultiFieldSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp []PaperCore
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.EqualValues(t, "0000000", testResp[0].ID)
+}
