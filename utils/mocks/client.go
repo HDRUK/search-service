@@ -9,6 +9,27 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 )
 
+// MockClient is the mock client
+type MockClient struct {
+	DoFunc func(req *http.Request) (*http.Response, error)
+}
+
+var (
+	// PostDoFunc fetches the mock client's `Do` func for POST requests
+	PostDoFunc func(req *http.Request) (*http.Response, error)
+	// GetDoFunc fetches the mock client's `Do` func for GET requests
+	GetDoFunc func(req *http.Request) (*http.Response, error)
+)
+
+// Do is the mock client's `Do` func
+func (m *MockClient) Do(req *http.Request) (*http.Response, error) {
+	if req.Method == "POST" {
+		return PostDoFunc(req)
+	} else {
+		return GetDoFunc(req)
+	}
+}
+
 // Recommended method for mocking the elasticsearch client in tests
 // See [go-elasticsearch](https://github.com/elastic/go-elasticsearch/tree/main#examples)
 type MockTransport struct {
