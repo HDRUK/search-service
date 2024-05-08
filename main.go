@@ -33,6 +33,7 @@ func main() {
 	router.POST("/mappings/collections", search.DefineCollectionMappings)
 	router.POST("/mappings/dur", search.DefineDataUseMappings)
 	router.POST("/mappings/publications", search.DefinePublicationMappings)
+	router.POST("/mappings/tools", search.DefineToolMappings)
 	router.POST("/filters", search.ListFilters)
 	router.POST("/similar/datasets", search.SearchSimilarDatasets)
 
