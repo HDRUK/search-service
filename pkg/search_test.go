@@ -74,6 +74,7 @@ func TestSearchGeneric(t *testing.T) {
 	assert.Contains(t, testResp, "collection")
 	assert.Contains(t, testResp, "dataUseRegister")
 	assert.Contains(t, testResp, "publication")
+	assert.Contains(t, testResp, "dataProvider")
 
 	datasetResp := testResp["dataset"].(map[string]interface{})
 	assert.EqualValues(t, 3, int(datasetResp["took"].(float64)))
@@ -173,6 +174,28 @@ func TestPublicationSearch(t *testing.T) {
 	MockPostToSearch(c)
 
 	PublicationSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp map[string]interface{}
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.Contains(t, testResp, "hits")
+	assert.Contains(t, testResp, "took")
+	assert.EqualValues(t, 3, int(testResp["took"].(float64)))
+}
+
+func TestDataProviderSearch(t *testing.T) {
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToSearch(c)
+
+	DataProviderSearch(c)
 
 	assert.EqualValues(t, http.StatusOK, w.Code)
 
@@ -450,4 +473,54 @@ func TestPublicationElasticConfig(t *testing.T) {
 	assert.Contains(t, aggsClause, "publicationType")
 	assert.Contains(t, aggsClause, "startDate")
 	assert.Contains(t, aggsClause, "endDate")
+}
+
+func TestDataProviderElasticConfig(t *testing.T) {
+	TestQuery := Query{
+		QueryString: "search term test",
+		Filters: map[string]map[string]interface{}{
+			"dataProvider": {
+				"geographicLocation": []interface{}{
+					"country A",
+					"country B",
+				},
+				"datasetTitles": []interface{}{
+					"Title A",
+					"Title B",
+				},
+			},
+		},
+		Aggregations: []map[string]interface{}{
+			{
+				"type": "dataProvider",
+				"keys": "geographicLocation",
+			},
+			{
+				"type": "dataProvider",
+				"keys": "datasetTitles",
+			},
+		},
+	}
+
+	durConfig := dataProviderElasticConfig(TestQuery)
+
+	// assert query clause exists and that it contains query term
+	assert.Contains(t, durConfig, "query")
+	queryJson, _ := json.Marshal(durConfig)
+	queryStr := string(queryJson)
+	assert.Contains(t, queryStr, "search term test")
+
+	// assert filter clause exists and contains boolean query
+	assert.Contains(t, durConfig, "post_filter")
+	filterClause := durConfig["post_filter"].(gin.H)
+	assert.Contains(t, filterClause, "bool")
+	assert.Contains(t, filterClause["bool"], "must")
+
+	// assert specific filter keys are included
+	assert.Contains(t, queryStr, "\"geographicLocation\":\"country A\"")
+	
+	// assert aggregations clause exists and contains specific keys
+	assert.Contains(t, durConfig, "aggs")
+	aggsClause := durConfig["aggs"].(gin.H)
+	assert.Contains(t, aggsClause, "datasetTitles")
 }

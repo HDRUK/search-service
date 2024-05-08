@@ -161,3 +161,23 @@ func TestDefinePublicationMappings(t *testing.T) {
 
 	assert.EqualValues(t, gin.H{"acknowledged": true}, testResp)
 }
+
+func TestDefineDataProviderMappings(t *testing.T) {
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPost(c)
+
+	DefineDataProviderMappings(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp map[string]interface{}
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.EqualValues(t, gin.H{"acknowledged": true}, testResp)
+}
