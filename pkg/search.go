@@ -90,6 +90,7 @@ func SearchGeneric(c *gin.Context) {
 	collectionResults := make(chan SearchResponse)
 	dataUseResults := make(chan SearchResponse)
 	publicationResults := make(chan SearchResponse)
+	dataProviderResults := make(chan SearchResponse)
 
 	results := make(map[string]interface{})
 
@@ -98,8 +99,9 @@ func SearchGeneric(c *gin.Context) {
 	go collectionChannel(query, collectionResults)
 	go dataUseChannel(query, dataUseResults)
 	go publicationChannel(query, publicationResults)
+	go dataProviderChannel(query, dataProviderResults)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 6; i++ {
 		select {
 		case datasets := <-datasetResults:
 			results["dataset"] = datasets
@@ -111,6 +113,8 @@ func SearchGeneric(c *gin.Context) {
 			results["dataUseRegister"] = data_uses
 		case publications := <-publicationResults:
 			results["publication"] = publications
+		case dataProviders := <-dataProviderResults:
+			results["dataProvider"] = dataProviders
 		}
 	}
 
@@ -859,6 +863,128 @@ func publicationElasticConfig(query Query) gin.H {
 				},
 			},
 		},
+		"explain": true,
+		"post_filter": f1,
+		"aggs": agg1,
+	}
+}
+
+func DataProviderSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		return
+	}
+
+	results := dataProviderSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func dataProviderChannel(query Query, res chan SearchResponse) {
+	elasticResp := datasetSearch(query)
+	res <- elasticResp
+}
+
+// dataProviderSearch performs a search of the ElasticSearch dataproviders index using
+// the provided query as the search term.  Results are returned in the format
+// returned by elastic (SearchResponse).
+func dataProviderSearch(query Query) SearchResponse {
+	var buf bytes.Buffer
+
+	elasticQuery := dataProviderElasticConfig(query)
+	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+		log.Fatal(err.Error())
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex("dataprovider"),
+		ElasticClient.Search.WithBody(&buf),
+	)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var elasticResp SearchResponse
+	json.Unmarshal(body, &elasticResp)
+
+	stripExplanation(elasticResp)
+
+	return elasticResp
+}
+
+// dataProviderElasticConfig defines the body of the query to the elastic data providers index
+func dataProviderElasticConfig(query Query) gin.H {
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		searchableFields := []string{
+			"name",
+			"datasetTitles",
+			"geographicLocation",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"operator":  "and",
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"fields": searchableFields,
+				"type":   "phrase",
+				"boost":  2,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
+	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range(query.Filters["dataProvider"]) {
+		filters := []gin.H{}
+		for _, t := range(terms.([]interface{})) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
+	agg1 := buildAggregations(query)
+
+	return gin.H{
+		"size": 100,
+		"query": mainQuery,
 		"explain": true,
 		"post_filter": f1,
 		"aggs": agg1,

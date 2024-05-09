@@ -63,7 +63,7 @@ func ListFilters(c *gin.Context) {
 			log.Printf("Filter type in %s not recognised", filter)
 		}
 		var index string
-		if (filterType == "dataUseRegister") {
+		if (filterType == "dataUseRegister" || filterType == "dataProvider") {
 			index = strings.ToLower(filterType)
 		} else if (filterType == "paper") {
 			index = "publication"

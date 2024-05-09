@@ -26,6 +26,7 @@ func main() {
 	router.POST("/search/collections", search.CollectionSearch)
 	router.POST("/search/dur", search.DataUseSearch)
 	router.POST("/search/publications", search.PublicationSearch)
+	router.POST("/search/data_providers", search.DataProviderSearch)
 	router.POST("/settings/datasets", search.DefineDatasetSettings)
 	router.POST("/settings/tools", search.DefineToolSettings)
 	router.POST("/settings/collections", search.DefineCollectionSettings)
@@ -34,6 +35,7 @@ func main() {
 	router.POST("/mappings/dur", search.DefineDataUseMappings)
 	router.POST("/mappings/publications", search.DefinePublicationMappings)
 	router.POST("/mappings/tools", search.DefineToolMappings)
+	router.POST("/mappings/data_providers", search.DefineDataProviderMappings)
 	router.POST("/filters", search.ListFilters)
 	router.POST("/similar/datasets", search.SearchSimilarDatasets)
 
