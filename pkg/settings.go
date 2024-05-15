@@ -87,6 +87,7 @@ func DefineDatasetMappings(c *gin.Context) {
 				"dataUseTitles": gin.H{"type": "keyword"},
 				"collectionName": gin.H{"type": "keyword"},
 				"geographicLocation": gin.H{"type": "keyword"},
+				"accessService": gin.H{"type": "keyword"},
 			},
 		},
 	}
