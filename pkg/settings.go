@@ -203,6 +203,10 @@ func DefineToolMappings(c *gin.Context) {
 		"mappings": gin.H{
 			"properties": gin.H{
 				"dataProvider": gin.H{"type": "keyword"},
+				"license": gin.H{"type": "keyword"},
+				"datasetTitles": gin.H{"type": "keyword"},
+				"programmingLanguages": gin.H{"type": "keyword"},
+				"typeCategory": gin.H{"type": "keyword"},
 			},
 		},
 	}
