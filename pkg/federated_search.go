@@ -109,6 +109,7 @@ func FieldSearch(c *gin.Context) {
 
 	filterString := getFilters(query.Filters)
 
+	// if logic when filters are empty or not...
 	urlPath := fmt.Sprintf(
 		"%s/search?query=%s:%s%%20AND%%20%s&resultType=core&format=json&pageSize=100",
 		os.Getenv("PMC_URL"),
