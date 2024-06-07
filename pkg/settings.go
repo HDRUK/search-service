@@ -405,6 +405,7 @@ func DefinePublicationMappings(c *gin.Context) {
 			"properties": gin.H{
 				"publicationType": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
+				"datasetLinkTypes": gin.H{"type": "keyword"},
 				"publicationDate": gin.H{"type": "date"},
 			},
 		},
