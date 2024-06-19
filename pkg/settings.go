@@ -88,6 +88,7 @@ func DefineDatasetMappings(c *gin.Context) {
 				"collectionName": gin.H{"type": "keyword"},
 				"geographicLocation": gin.H{"type": "keyword"},
 				"accessService": gin.H{"type": "keyword"},
+				"tissueSampleAvailability": gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -405,6 +406,7 @@ func DefinePublicationMappings(c *gin.Context) {
 			"properties": gin.H{
 				"publicationType": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
+				"datasetLinkTypes": gin.H{"type": "keyword"},
 				"publicationDate": gin.H{"type": "date"},
 			},
 		},
