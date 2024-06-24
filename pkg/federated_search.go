@@ -55,6 +55,7 @@ type PaperUrl struct {
 type FieldQuery struct {
 	QueryString string `json:"query"`
 	Field       string `json:"field"`
+	Filters     map[string]map[string]interface{} `json:"filters"`
 }
 
 type MultiFieldQuery struct {
@@ -106,12 +107,18 @@ func FieldSearch(c *gin.Context) {
 		return
 	}
 
+	filterString := getFilters(query.Filters)
+
+	// if logic when filters are empty or not...
 	urlPath := fmt.Sprintf(
-		"%s/search?query=%s:%s&resultType=core&format=json&pageSize=100",
+		"%s/search?query=%s:%s%%20AND%%20%s&resultType=core&format=json&pageSize=100",
 		os.Getenv("PMC_URL"),
 		query.Field,
 		url.QueryEscape(query.QueryString),
+		filterString,
 	)
+
+	fmt.Println(urlPath)
 
 	respBody := getPMC(urlPath)
 
@@ -194,6 +201,26 @@ func extractDOI(doi string) string {
 	doiNum = strings.Replace(doiNum, ")", "\\)", -1)
 
 	return doiNum
+}
+
+func getFilters(filters map[string]map[string]interface{}) string {
+	var filterString []string
+	if val, ok := filters["paper"]["publicationDate"]; ok {
+		str := fmt.Sprintf(
+			"PUB_YEAR:[%s%%20TO%%20%s]", 
+			val.([]interface{})[0], 
+			val.([]interface{})[1],
+		)
+		filterString = append(filterString, str)
+	}
+	if val, ok := filters["paper"]["publicationType"]; ok {
+		for _, t := range(val.([]interface{})) {
+			str := fmt.Sprintf("PUB_TYPE:%s", strings.Replace(t.(string), " ", "%20", -1))
+			filterString = append(filterString, str)
+		}
+	}
+	queryString := strings.Join(filterString, "%20AND%20")
+	return queryString
 }
 
 func reverse(str string) (result string) { 
