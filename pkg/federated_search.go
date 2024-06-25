@@ -54,13 +54,8 @@ type PaperUrl struct {
 
 type FieldQuery struct {
 	QueryString string `json:"query"`
-	Field       string `json:"field"`
+	Field       []string `json:"field"`
 	Filters     map[string]map[string]interface{} `json:"filters"`
-}
-
-type MultiFieldQuery struct {
-	QueryString string 	 `json:"query"`
-	Fields      []string `json:"fields"`
 }
 
 var (
@@ -107,17 +102,13 @@ func FieldSearch(c *gin.Context) {
 		return
 	}
 
-	filterString := getFilters(query.Filters)
+	queryString := buildQueryString(query)
 
 	urlPath := fmt.Sprintf(
-		"%s/search?query=%s:%s%%20AND%%20%s&resultType=core&format=json&pageSize=100",
+		"%s/search?%s&resultType=core&format=json&pageSize=100",
 		os.Getenv("PMC_URL"),
-		query.Field,
-		url.QueryEscape(query.QueryString),
-		filterString,
+		queryString,
 	)
-
-	fmt.Println(urlPath)
 
 	respBody := getPMC(urlPath)
 
@@ -125,41 +116,6 @@ func FieldSearch(c *gin.Context) {
 	json.Unmarshal(respBody, &result)
 
 	c.JSON(http.StatusOK, result)
-}
-
-// MultiFieldSearch searches the EuropePMC articles API for papers where the given 
-// query string appears in any of the given fields (e.g. "ABSTRACT", "METHODS", 
-// "SUPPL").
-// Returns results as an array of PaperCore.
-func MultiFieldSearch(c *gin.Context) {
-	var query MultiFieldQuery
-	if err := c.BindJSON(&query); err != nil {
-		return
-	}
-
-	var allResults []PaperCore
-	var allIDs []string
-	for _, field := range(query.Fields) {
-		urlPath := fmt.Sprintf(
-			"%s/search?query=%s:%s&resultType=core&format=json&pageSize=100",
-			os.Getenv("PMC_URL"),
-			field,
-			url.QueryEscape(query.QueryString),
-		)
-		
-		respBody := getPMC(urlPath)
-
-		var result PMCCoreResponse
-		json.Unmarshal(respBody, &result)
-
-		for _, res := range(result.ResultList["result"]) {
-			if !(contains(res.ID, allIDs)) {
-				allIDs = append(allIDs, res.ID)
-				allResults = append(allResults, res)
-			}
-		}
-	}
-	c.JSON(http.StatusOK, allResults)
 }
 
 // getPMC queries the EuropePMC articles API using the given urlPath.
@@ -202,24 +158,73 @@ func extractDOI(doi string) string {
 	return doiNum
 }
 
+func buildQueryString(query FieldQuery) string {
+	queryString := "query=("
+	for i, fieldString := range(query.Field) {
+		if (i == (len(query.Field) - 1)) {
+			queryString = fmt.Sprintf(
+				"%s%s:%s)%%20AND%%20", queryString, fieldString, query.QueryString,
+			)
+		} else {
+			queryString = fmt.Sprintf(
+				"%s%s:%s%%20OR%%20", queryString, fieldString, query.QueryString,
+			)
+		}
+	}
+	_, ok := query.Filters["paper"]
+	if ok {
+		filterString := getFilters(query.Filters)
+		fullString := fmt.Sprintf("%s%s", queryString, filterString)
+		return fullString
+	} else {
+		return queryString
+	}
+}
+
 func getFilters(filters map[string]map[string]interface{}) string {
-	var filterString []string
+	var queryString string
+	var filterType []string
+	var allFilterType string
 	if val, ok := filters["paper"]["publicationDate"]; ok {
-		str := fmt.Sprintf(
+		filterDate := fmt.Sprintf(
 			"PUB_YEAR:[%s%%20TO%%20%s]", 
-			val.([]interface{})[0], 
-			val.([]interface{})[1],
+			val.([]interface{})[0].(string),
+			val.([]interface{})[1].(string),
 		)
-		filterString = append(filterString, str)
+		queryString = filterDate
 	}
 	if val, ok := filters["paper"]["publicationType"]; ok {
 		for _, t := range(val.([]interface{})) {
-			str := fmt.Sprintf("PUB_TYPE:%s", strings.Replace(t.(string), " ", "%20", -1))
-			filterString = append(filterString, str)
+			str := publicationTypeFilter(t.(string))
+			filterType = append(filterType, str)
+		}
+		allFilterType = strings.Join(filterType, "%20OR%20")
+		if (queryString != "") {
+			queryString = fmt.Sprintf("%s%%20AND%%20%s", queryString, allFilterType)
+		} else {
+			queryString = allFilterType
 		}
 	}
-	queryString := strings.Join(filterString, "%20AND%20")
 	return queryString
+}
+
+func publicationTypeFilter(pubType string) string {
+	var filterStr string
+	if (pubType == "Research articles") {
+		filterStr = strings.Replace(
+			"(((SRC:MED OR SRC:PMC OR SRC:AGR OR SRC:CBA) NOT (PUB_TYPE:\"Review\")))", " ", "%20", -1,
+		)
+	} else if (pubType == "Review articles") {
+		filterStr = "PUB_TYPE:REVIEW"
+	} else if (pubType == "Preprints") {
+		filterStr = "SRC:PPR"
+	} else if (pubType == "Books and documents") {
+		filterStr = "HAS_BOOK:Y"
+	} else {
+		log.Printf("Unknown filter option: %s", pubType)
+	}
+
+	return filterStr
 }
 
 func reverse(str string) (result string) { 
@@ -227,13 +232,4 @@ func reverse(str string) (result string) {
         result = string(v) + result 
     } 
     return
-}
-
-func contains(item string, collection []string) bool {
-    for _, c := range collection {
-        if c == item {
-            return true
-        }
-    }
-    return false
 }
