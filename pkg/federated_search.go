@@ -160,14 +160,15 @@ func extractDOI(doi string) string {
 
 func buildQueryString(query FieldQuery) string {
 	queryString := "query=("
+	queryFormatted := strings.Replace(query.QueryString, " ", "%20", -1)
 	for i, fieldString := range(query.Field) {
 		if (i == (len(query.Field) - 1)) {
 			queryString = fmt.Sprintf(
-				"%s%s:%s)%%20AND%%20", queryString, fieldString, query.QueryString,
+				"%s%s:%s)%%20AND%%20", queryString, fieldString, queryFormatted,
 			)
 		} else {
 			queryString = fmt.Sprintf(
-				"%s%s:%s%%20OR%%20", queryString, fieldString, query.QueryString,
+				"%s%s:%s%%20OR%%20", queryString, fieldString, queryFormatted,
 			)
 		}
 	}
