@@ -41,7 +41,6 @@ func main() {
 
 	router.POST("/search/federated_papers/doi", search.DOISearch)
 	router.POST("/search/federated_papers/field_search", search.FieldSearch)
-	router.POST("/search/federated_papers/multi_field_search", search.MultiFieldSearch)
 
 	router.Run(os.Getenv("SEARCHSERVICE_HOST"))
 }
