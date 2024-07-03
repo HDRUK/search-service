@@ -89,6 +89,7 @@ func DefineDatasetMappings(c *gin.Context) {
 				"geographicLocation": gin.H{"type": "keyword"},
 				"accessService": gin.H{"type": "keyword"},
 				"sampleAvailability": gin.H{"type": "keyword"},
+				"dataType": gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -446,6 +447,7 @@ func DefineDataProviderMappings(c *gin.Context) {
 			"properties": gin.H{
 				"geographicLocation": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
+				"dataType": gin.H{"type": "keyword"},
 			},
 		},
 	}
