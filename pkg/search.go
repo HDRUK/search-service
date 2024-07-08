@@ -3,8 +3,10 @@ package search
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"math"
 	"net/http"
 
@@ -124,6 +126,7 @@ func SearchGeneric(c *gin.Context) {
 func DatasetSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 
@@ -144,7 +147,11 @@ func datasetSearch(query Query) SearchResponse {
 
 	elasticQuery := datasetElasticConfig(query)
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic config %s with %s", 
+			elasticQuery, 
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -153,17 +160,35 @@ func datasetSearch(query Query) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		// When there are genuinely no matches elastic returns hits == [].
+		// When the hits == nil this implies something has actually gone wrong
+		// for example an aggregation that cannot be calculated.
+		// So we throw a warning in the case where hits == nil and more info
+		// if debug mode is on.
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	stripExplanation(elasticResp)
 
@@ -303,6 +328,7 @@ func datasetElasticConfig(query Query) gin.H {
 func ToolSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 	results := toolSearch(query)
@@ -322,7 +348,11 @@ func toolSearch(query Query) SearchResponse {
 
 	elasticQuery := toolsElasticConfig(query)
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -331,17 +361,30 @@ func toolSearch(query Query) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	stripExplanation(elasticResp)
 
@@ -442,6 +485,7 @@ func toolsElasticConfig(query Query) gin.H {
 func CollectionSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 	results := collectionSearch(query)
@@ -461,7 +505,11 @@ func collectionSearch(query Query) SearchResponse {
 
 	elasticQuery := collectionsElasticConfig(query)
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -470,17 +518,30 @@ func collectionSearch(query Query) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	stripExplanation(elasticResp)
 
@@ -586,6 +647,7 @@ func collectionsElasticConfig(query Query) gin.H {
 func DataUseSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 	results := dataUseSearch(query)
@@ -605,7 +667,11 @@ func dataUseSearch(query Query) SearchResponse {
 
 	elasticQuery := dataUseElasticConfig(query)
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -614,17 +680,30 @@ func dataUseSearch(query Query) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	stripExplanation(elasticResp)
 
@@ -720,6 +799,7 @@ func dataUseElasticConfig(query Query) gin.H {
 func PublicationSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 	results := publicationSearch(query)
@@ -741,7 +821,11 @@ func publicationSearch(query Query) SearchResponse {
 
 	elasticQuery := publicationElasticConfig(query)
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -750,17 +834,30 @@ func publicationSearch(query Query) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	stripExplanation(elasticResp)
 
@@ -872,6 +969,7 @@ func publicationElasticConfig(query Query) gin.H {
 func DataProviderSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 
@@ -892,7 +990,11 @@ func dataProviderSearch(query Query) SearchResponse {
 
 	elasticQuery := dataProviderElasticConfig(query)
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -901,17 +1003,30 @@ func dataProviderSearch(query Query) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	stripExplanation(elasticResp)
 
@@ -1045,6 +1160,7 @@ func stripExplanation(elasticResp SearchResponse) {
 func SearchSimilarDatasets(c *gin.Context) {
 	var querySimilar SimilarSearch
 	if err := c.BindJSON(&querySimilar); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
 
@@ -1067,7 +1183,11 @@ func similarSearch(id string, index string) SearchResponse {
 	}
 
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
 	}
 
 	response, err := ElasticClient.Search(
@@ -1076,17 +1196,30 @@ func similarSearch(id string, index string) SearchResponse {
 	)
 
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 
 	var elasticResp SearchResponse
 	json.Unmarshal(body, &elasticResp)
+
+	if (elasticResp.Hits.Hits == nil) {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
 
 	return elasticResp
 }

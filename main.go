@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,12 @@ func main() {
 		fmt.Println("Could not load variables from .env.")
 	}
 
-	fmt.Printf("audit enabled: %s", os.Getenv("AUDIT_LOG_ENABLED"))
+	debugLogs := os.Getenv("DEBUG_LOGGING")
+	if (debugLogs == "true") {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	} else {
+		slog.SetLogLoggerLevel(slog.LevelInfo)
+	}
 
 	search.DefineElasticClient()
 

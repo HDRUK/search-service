@@ -3,8 +3,9 @@ package search
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -46,7 +47,7 @@ The expected structure of a FilterRequest is:
 func ListFilters(c *gin.Context) {
 	var filterRequest FilterRequest
 	if err := c.BindJSON(&filterRequest); err != nil {
-		log.Printf("Could not bind filter request: %s", c.Request.Body)
+		slog.Warn(fmt.Sprintf("Could not bind filter request: %s", c.Request.Body))
 	}
 
 	var allFilters []gin.H
@@ -55,12 +56,12 @@ func ListFilters(c *gin.Context) {
 		var buf bytes.Buffer
 		elasticQuery := filtersRequest(filter)
 		if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-			log.Fatal(err.Error())
+			slog.Info(fmt.Sprintf("Failed to encode filters request: %s", err.Error()))
 		}
 
 		filterType, ok := filter["type"].(string)
 		if !ok {
-			log.Printf("Filter type in %s not recognised", filter)
+			slog.Debug(fmt.Sprintf("Filter type in %s not recognised", filter))
 		}
 		var index string
 		if (filterType == "dataUseRegister" || filterType == "dataProvider") {
@@ -73,7 +74,7 @@ func ListFilters(c *gin.Context) {
 
 		filterKey, ok := filter["keys"].(string)
 		if !ok {
-			log.Printf("Filter keys in %s not recognised", filter)
+			slog.Debug(fmt.Sprintf("Filter keys in %s not recognised", filter))
 		}
 
 		response, err := ElasticClient.Search(
@@ -82,17 +83,21 @@ func ListFilters(c *gin.Context) {
 		)
 
 		if err != nil {
-			log.Fatal(err.Error())
+			slog.Warn(err.Error())
 		}
 		defer response.Body.Close()
 	
 		body, err := io.ReadAll(response.Body)
 		if err != nil {
-			log.Fatal(err.Error())
+			slog.Warn(err.Error())
 		}
 
 		var elasticResp SearchResponse
 		json.Unmarshal(body, &elasticResp)
+
+		if (len(elasticResp.Aggregations) == 0) {
+			slog.Warn(fmt.Sprintf("No aggreations returned for filter: %s - %s", filterType, filterKey))
+		}
 
 		if (filterKey == "dateRange") || (filterKey == "publicationDate") {
 			startValue := elasticResp.Aggregations["startDate"].(map[string]interface{})["value_as_string"]
@@ -125,7 +130,7 @@ func filtersRequest(filter map[string]interface{}) gin.H {
 	filterKey, ok := filter["keys"].(string)
 	var aggs gin.H
 	if !ok {
-		log.Printf("Filter key in %s not recognised", filter["keys"])
+		slog.Info(fmt.Sprintf("Filter key in %s not recognised", filter["keys"]))
 	}
 	if (filterKey == "dateRange") {
 		aggs = gin.H{

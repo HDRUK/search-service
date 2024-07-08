@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -122,19 +122,19 @@ func FieldSearch(c *gin.Context) {
 func getPMC(urlPath string) []byte {
 	req, err := http.NewRequest("GET", urlPath, strings.NewReader(""))
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Info(fmt.Sprintf("Failed to build EPMC query with: %s", err.Error()))
 	}
 	req.Header.Add("Content-Type", "application/json")
 
 	response, err := Client.Do(req)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Info(fmt.Sprintf("Failed to execute EPMC query with: %s", err.Error()))
 	}
 	defer response.Body.Close()
 
 	respBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err.Error())
+		slog.Warn(fmt.Sprintf("Failed to get EPMC response with: %s", err.Error()))
 	}
 
 	return respBody
@@ -144,7 +144,7 @@ func getPMC(urlPath string) []byte {
 func extractDOI(doi string) string {
 	startInd := strings.Index(doi, "10")
 	if startInd == -1 {
-		fmt.Printf("String is not a valid doi: %s", doi)
+		slog.Debug(fmt.Sprintf("String is not a valid doi: %s", doi))
 		return doi
 	}
 	endInd := len(doi) - (strings.Index(reverse(doi), "v") + 1)
@@ -222,7 +222,7 @@ func publicationTypeFilter(pubType string) string {
 	} else if (pubType == "Books and documents") {
 		filterStr = "HAS_BOOK:Y"
 	} else {
-		log.Printf("Unknown filter option: %s", pubType)
+		slog.Debug(fmt.Sprintf("Unknown filter option: %s", pubType))
 	}
 
 	return filterStr
