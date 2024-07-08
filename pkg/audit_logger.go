@@ -19,6 +19,7 @@ func pubSubAudit(actionType string, actionName string, description string) {
 		ctx := context.Background()
 		projectId := os.Getenv("PUBSUB_PROJECT_ID")
 		topicName := os.Getenv("PUBSUB_TOPIC_NAME")
+		serviceName := os.Getenv("PUBSUB_SERVICE_NAME")
 
 		client, err := pubsub.NewClient(ctx, projectId)
 		if err != nil {
@@ -29,7 +30,7 @@ func pubSubAudit(actionType string, actionName string, description string) {
 		messageJson := gin.H{
 			"action_type": actionType,
 			"action_name": actionName,
-			"action_service": "search-service",
+			"action_service": serviceName,
 			"description": description,
 			"created_at": time.Now().UnixMicro(),
 		}
