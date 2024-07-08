@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,7 @@ func pubSubAudit(actionType string, actionName string, description string) {
 			"action_name": actionName,
 			"action_service": "search-service",
 			"description": description,
+			"created_at": time.Now().UnixMicro(),
 		}
 		messageByte, err := json.Marshal(messageJson)
 		if err != nil {
