@@ -16,6 +16,8 @@ func main() {
 		fmt.Println("Could not load variables from .env.")
 	}
 
+	fmt.Printf("audit enabled: %s", os.Getenv("AUDIT_LOG_ENABLED"))
+
 	search.DefineElasticClient()
 
 	router := gin.Default()
