@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
@@ -47,7 +48,11 @@ func DefineDatasetSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticSettings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
@@ -56,19 +61,33 @@ func DefineDatasetSettings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update settings", 
+			"datasets", 
+			fmt.Sprintf("dataset settings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
 
 	// Reopen the index
 	openIndexByName("dataset")
+
+	pubSubAudit("update settings", "datasets", "dataset settings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -89,11 +108,16 @@ func DefineDatasetMappings(c *gin.Context) {
 				"geographicLocation": gin.H{"type": "keyword"},
 				"accessService": gin.H{"type": "keyword"},
 				"sampleAvailability": gin.H{"type": "keyword"},
+				"dataType": gin.H{"type": "keyword"},
 			},
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesCreateRequest{
@@ -102,16 +126,30 @@ func DefineDatasetMappings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"datasets", 
+			fmt.Sprintf("dataset mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "datasets", "dataset mappings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -138,7 +176,11 @@ func DefineToolSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticSettings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
@@ -153,7 +195,15 @@ func DefineToolSettings(c *gin.Context) {
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		pubSubAudit(
+			"update settings", 
+			"tools", 
+			fmt.Sprintf("tool settings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
@@ -168,7 +218,11 @@ func DefineToolSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&mappings).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
@@ -177,19 +231,33 @@ func DefineToolSettings(c *gin.Context) {
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"tools", 
+			fmt.Sprintf("tool mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(mappingsResponse.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer mappingsResponse.Body.Close()
 	mappingsBody, err := io.ReadAll(mappingsResponse.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var mappingResp map[string]interface{}
 	json.Unmarshal(mappingsBody, &mappingResp)
 
 	// Reopen the index
 	openIndexByName("tool")
+
+	pubSubAudit("update settings", "tools", "tool settings sucessfully updated")
 
 	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
 }
@@ -212,7 +280,11 @@ func DefineToolMappings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesCreateRequest{
@@ -221,16 +293,30 @@ func DefineToolMappings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"tools", 
+			fmt.Sprintf("tool mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "tools", "tool mappings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -258,7 +344,11 @@ func DefineCollectionSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticSettings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
@@ -267,13 +357,25 @@ func DefineCollectionSettings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update settings", 
+			"collections", 
+			fmt.Sprintf("collection settings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
@@ -288,7 +390,11 @@ func DefineCollectionSettings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&mappings).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
@@ -297,19 +403,33 @@ func DefineCollectionSettings(c *gin.Context) {
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"collections", 
+			fmt.Sprintf("collection mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(mappingsResponse.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer mappingsResponse.Body.Close()
 	mappingsBody, err := io.ReadAll(mappingsResponse.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var mappingResp map[string]interface{}
 	json.Unmarshal(mappingsBody, &mappingResp)
 
 	// Reopen the index
 	openIndexByName("collection")
+
+	pubSubAudit("update settings", "collections", "collection settings sucessfully updated")
 
 	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
 }
@@ -331,7 +451,11 @@ func DefineCollectionMappings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesCreateRequest{
@@ -340,16 +464,30 @@ func DefineCollectionMappings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"collections", 
+			fmt.Sprintf("collection mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "collections", "collection mappings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -372,7 +510,11 @@ func DefineDataUseMappings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesCreateRequest{
@@ -381,16 +523,30 @@ func DefineDataUseMappings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"data uses", 
+			fmt.Sprintf("data use mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "data uses", "data use mappings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -412,7 +568,11 @@ func DefinePublicationMappings(c *gin.Context) {
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesCreateRequest{
@@ -421,16 +581,30 @@ func DefinePublicationMappings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"publications", 
+			fmt.Sprintf("publication mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "publications", "publication mappings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -446,11 +620,16 @@ func DefineDataProviderMappings(c *gin.Context) {
 			"properties": gin.H{
 				"geographicLocation": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
+				"dataType": gin.H{"type": "keyword"},
 			},
 		},
 	}
 	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
 	}
 
 	request := esapi.IndicesCreateRequest{
@@ -459,16 +638,30 @@ func DefineDataProviderMappings(c *gin.Context) {
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
+		pubSubAudit(
+			"update mappings", 
+			"data providers", 
+			fmt.Sprintf("data provider mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
 		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
 		return
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println(err.Error())
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "data providers", "data provider mappings sucessfully updated")
 
 	c.JSON(http.StatusOK, resp)
 }

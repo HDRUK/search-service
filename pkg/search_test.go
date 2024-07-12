@@ -20,6 +20,7 @@ func init() {
 }
 
 func GetTestGinContext(w *httptest.ResponseRecorder) *gin.Context {
+	log.SetOutput(io.Discard)
 	gin.SetMode(gin.TestMode)
 
 	ctx, _ := gin.CreateTestContext(w)
