@@ -71,4 +71,3 @@ GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials_file/in/container"
 ```
 
 To enable debug level console logging set the environment variable `DEBUG_LOGGING="true"`.
-
