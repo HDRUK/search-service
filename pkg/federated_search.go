@@ -147,10 +147,7 @@ func extractDOI(doi string) string {
 		slog.Debug(fmt.Sprintf("String is not a valid doi: %s", doi))
 		return doi
 	}
-	endInd := len(doi) - (strings.Index(reverse(doi), "v") + 1)
-	if (endInd < startInd) {
-		endInd = len(doi)
-	}
+	endInd := len(doi)
 	doiNum := doi[startInd:endInd]
 	doiNum = strings.Replace(doiNum, "(", "\\(", -1)
 	doiNum = strings.Replace(doiNum, ")", "\\)", -1)
