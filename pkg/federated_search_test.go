@@ -98,7 +98,7 @@ func MockPostToFieldSearch(c *gin.Context) {
 func TestExtractDOI(t *testing.T) {
 	doi := "https://doi.org/10.1010/a11-22(22)33v3"
 	extracted := extractDOI(doi)
-	expected := "10.1010/a11-22\\(22\\)33"
+	expected := "10.1010/a11-22\\(22\\)33v3"
 	
 	assert.EqualValues(t, expected, extracted)
 
