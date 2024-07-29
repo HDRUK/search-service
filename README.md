@@ -57,3 +57,17 @@ Results are returned grouped by entity type.
     }
 }
 ```
+
+## Logging
+
+To enable the audit log locally, the user needs to define the environment variables below and have a copy of `application_default_credentials.json` copied into the root directory of the container.
+
+```
+AUDIT_LOG_ENABLED="true"
+PUBSUB_PROJECT_ID=
+PUBSUB_TOPIC_NAME=
+PUBSUB_SERVICE_NAME="search-service"
+GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials_file/in/container"
+```
+
+To enable debug level console logging set the environment variable `DEBUG_LOGGING="true"`.

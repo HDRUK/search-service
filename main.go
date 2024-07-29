@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,13 @@ func main() {
 	err := godotenv.Load(".env")
 	if err != nil {
 		fmt.Println("Could not load variables from .env.")
+	}
+
+	debugLogs := os.Getenv("DEBUG_LOGGING")
+	if (debugLogs == "true") {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	} else {
+		slog.SetLogLoggerLevel(slog.LevelInfo)
 	}
 
 	search.DefineElasticClient()
@@ -41,7 +49,6 @@ func main() {
 
 	router.POST("/search/federated_papers/doi", search.DOISearch)
 	router.POST("/search/federated_papers/field_search", search.FieldSearch)
-	router.POST("/search/federated_papers/multi_field_search", search.MultiFieldSearch)
 
 	router.Run(os.Getenv("SEARCHSERVICE_HOST"))
 }

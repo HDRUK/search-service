@@ -78,22 +78,14 @@ func MockPostToFieldSearch(c *gin.Context) {
 	c.Request.Header.Set("Content-Type", "application/json")
 	bodyContent := gin.H{
 		"query": "A Very Useful Dataset (AVUD)",
-		"field": "METHODS",
-	}
-	bodyBytes, err := json.Marshal(bodyContent)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-}
-
-func MockPostToMultiFieldSearch(c *gin.Context) {
-	c.Request.Method = "POST"
-	c.Request.Header.Set("Content-Type", "application/json")
-	bodyContent := gin.H{
-		"query": "A Very Useful Dataset (AVUD)",
-		"fields": []string{
-			"METHODS", "TABLE", "SUPPL",
+		"field": []string{
+			"TITLE","ABSTRACT","METHODS",
+		},
+		"filters": gin.H{
+			"paper": gin.H{
+				"publicationDate": []string{"2020", "2021"},
+				"publicationType": []string{"Review articles", "Preprints"},
+			},
 		},
 	}
 	bodyBytes, err := json.Marshal(bodyContent)
@@ -106,7 +98,7 @@ func MockPostToMultiFieldSearch(c *gin.Context) {
 func TestExtractDOI(t *testing.T) {
 	doi := "https://doi.org/10.1010/a11-22(22)33v3"
 	extracted := extractDOI(doi)
-	expected := "10.1010/a11-22\\(22\\)33"
+	expected := "10.1010/a11-22\\(22\\)33v3"
 	
 	assert.EqualValues(t, expected, extracted)
 
@@ -179,32 +171,22 @@ func TestFieldSearch(t *testing.T) {
 	assert.EqualValues(t, "0000000", testResp.ResultList["result"][0].ID)
 }
 
-func TestMultiFieldSearch(t *testing.T) {
-
-	mocks.GetDoFunc = func(req *http.Request) (*http.Response, error) {
-		// Create a reader with the GET json response
-		r := io.NopCloser(bytes.NewReader([]byte(epmcRespJson)))
-		return &http.Response{
-			StatusCode: 200,
-			Body:       r,
-		}, nil
+func TestBuildQueryString(t *testing.T) {
+	query := FieldQuery{
+		QueryString: "A Very Useful Dataset (AVUD)",
+		Field : []string{"TITLE","ABSTRACT","METHODS"},
+		Filters: map[string]map[string]interface{}{
+			"paper": {
+				"publicationDate": []interface{}{"2020", "2021"},
+				"publicationType": []interface{}{"Review articles", "Preprints"},
+			},
+		},
 	}
-
-	w := httptest.NewRecorder()
-	c := GetTestGinContext(w)
-	MockPostToMultiFieldSearch(c)
-
-	MultiFieldSearch(c)
-
-	assert.EqualValues(t, http.StatusOK, w.Code)
-
-	bodyBytes, err := io.ReadAll(w.Body)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	var testResp []PaperCore
-	json.Unmarshal(bodyBytes, &testResp)
-
-	assert.EqualValues(t, "0000000", testResp[0].ID)
+	
+	queryString := buildQueryString(query)
+	
+	assert.Contains(t, queryString, "TITLE")
+	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
+	assert.Contains(t, queryString, "SRC:PPR")
+	assert.Contains(t, queryString, "PUB_YEAR:[2020%20TO%202021]")
 }
