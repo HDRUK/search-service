@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"os"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
@@ -190,7 +191,7 @@ func datasetSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp)
+	stripExplanation(elasticResp, query.QueryString)
 
 	return elasticResp
 }
@@ -386,7 +387,7 @@ func toolSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp)
+	stripExplanation(elasticResp, query.QueryString)
 
 	return elasticResp
 }
@@ -543,7 +544,7 @@ func collectionSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp)
+	stripExplanation(elasticResp, query.QueryString)
 
 	return elasticResp
 }
@@ -705,7 +706,7 @@ func dataUseSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp)
+	stripExplanation(elasticResp, query.QueryString)
 
 	return elasticResp
 }
@@ -859,7 +860,7 @@ func publicationSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp)
+	stripExplanation(elasticResp, query.QueryString)
 
 	return elasticResp
 }
@@ -1028,7 +1029,7 @@ func dataProviderSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp)
+	stripExplanation(elasticResp, query.QueryString)
 
 	return elasticResp
 }
@@ -1144,15 +1145,48 @@ func populationRanges() []gin.H {
 }
 
 // Remove the explanations from a SearchResponse to reduce its size
-func stripExplanation(elasticResp SearchResponse) {
-	var explanations []map[string]interface{}
-
-	for i, hit := range elasticResp.Hits.Hits {
-		explanations = append(explanations, hit.Explanation)
+func stripExplanation(elasticResp SearchResponse, queryString string) {
+	for i := range elasticResp.Hits.Hits {
 		elasticResp.Hits.Hits[i].Explanation = make(map[string]interface{}, 0)
 	}
 
-	// TO DO - send explanations to BigQuery
+	go extractExplanation(elasticResp, queryString)
+}
+
+func extractExplanation(elasticResp SearchResponse, queryString string) {
+	bodyContent := gin.H{
+		"data": elasticResp,
+		"query": queryString,
+		"destination_table": os.Getenv("SEARCH_EXPLANATION_TABLE"),
+	}
+	body, err := json.Marshal(bodyContent)
+	if err != nil {
+		slog.Info(fmt.Sprintf("Failed to marshal search explanation payload: %s", err.Error()))
+	}
+
+	urlPath := fmt.Sprintf("%s/process_data", os.Getenv("SEARCH_EXPLANATION_EXTRACTOR"))
+	req, err := http.NewRequest("POST", urlPath, bytes.NewBuffer(body))
+	if err != nil {
+		slog.Info(fmt.Sprintf("Failed to build search explanation payload with: %s", err.Error()))
+	}
+	req.Header.Add("Content-Type", "application/json")
+	req.SetBasicAuth(os.Getenv("SEARCH_EXPLANATION_USER"), os.Getenv("SEARCH_EXPLANATION_PASSWORD"))
+
+	response, err := Client.Do(req)
+	if err != nil {
+		slog.Info(fmt.Sprintf("Failed to execute query with: %s", err.Error()))
+	}
+	defer response.Body.Close()
+
+	respBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		slog.Info(fmt.Sprintf(
+			"Failed to extract search explanation with error %s", err.Error(),
+		))
+	}
+	slog.Debug(fmt.Sprintf(
+		"Search explanation extraction routine exited with response: %s", respBody,
+	))
 }
 
 // SearchSimilarDatasets returns the top 3 datasets similar to the document with
