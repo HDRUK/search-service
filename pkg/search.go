@@ -1150,7 +1150,10 @@ func stripExplanation(elasticResp SearchResponse, queryString string) {
 		elasticResp.Hits.Hits[i].Explanation = make(map[string]interface{}, 0)
 	}
 
-	go extractExplanation(elasticResp, queryString)
+	_, expEnabled := os.LookupEnv("SEARCH_EXPLANATION_EXTRACTOR")
+	if expEnabled {
+		go extractExplanation(elasticResp, queryString)
+	}
 }
 
 func extractExplanation(elasticResp SearchResponse, queryString string) {
