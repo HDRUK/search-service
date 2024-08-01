@@ -17,6 +17,15 @@ import (
 
 func init() {
 	ElasticClient = mocks.MockElasticClient()
+	Client = &mocks.MockClient{}
+
+	mocks.PostDoFunc = func(req *http.Request) (*http.Response, error) {
+		r := io.NopCloser(bytes.NewReader([]byte(``)))
+		return &http.Response{
+			StatusCode: 200,
+			Body:       r,
+		}, nil
+	}
 }
 
 func GetTestGinContext(w *httptest.ResponseRecorder) *gin.Context {
