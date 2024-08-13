@@ -103,6 +103,7 @@ func DefineDatasetMappings(c *gin.Context) {
 			"properties": gin.H{
 				"publisherName": gin.H{"type": "keyword"},
 				"dataProvider": gin.H{"type": "keyword"},
+				"dataProviderColl": gin.H{"type": "keyword"},
 				"dataUseTitles": gin.H{"type": "keyword"},
 				"collectionName": gin.H{"type": "keyword"},
 				"geographicLocation": gin.H{"type": "keyword"},
@@ -272,6 +273,7 @@ func DefineToolMappings(c *gin.Context) {
 		"mappings": gin.H{
 			"properties": gin.H{
 				"dataProvider": gin.H{"type": "keyword"},
+				"dataProviderColl": gin.H{"type": "keyword"},
 				"license": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
 				"programmingLanguages": gin.H{"type": "keyword"},
@@ -446,6 +448,7 @@ func DefineCollectionMappings(c *gin.Context) {
 			"properties": gin.H{
 				"publisherName": gin.H{"type": "keyword"},
 				"dataProvider": gin.H{"type": "keyword"},
+				"dataProviderColl": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
 			},
 		},
@@ -503,6 +506,7 @@ func DefineDataUseMappings(c *gin.Context) {
 			"properties": gin.H{
 				"publisherName": gin.H{"type": "keyword"},
 				"dataProvider": gin.H{"type": "keyword"},
+				"dataProviderColl": gin.H{"type": "keyword"},
 				"sector": gin.H{"type": "keyword"},
 				"organisationName": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
@@ -621,6 +625,7 @@ func DefineDataProviderMappings(c *gin.Context) {
 				"geographicLocation": gin.H{"type": "keyword"},
 				"datasetTitles": gin.H{"type": "keyword"},
 				"dataType": gin.H{"type": "keyword"},
+				"dataProviderColl": gin.H{"type": "keyword"},
 			},
 		},
 	}
