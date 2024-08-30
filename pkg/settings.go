@@ -38,9 +38,9 @@ func DefineDatasetSettings(c *gin.Context) {
 					},
 					"filter": gin.H{
 						"medterms_synonyms": gin.H{
-							"type": "synonym",
+							"type":         "synonym",
 							"synonyms_set": "hdr_synonyms_set",
-							"updateable": true,
+							"updateable":   true,
 						},
 					},
 				},
@@ -56,14 +56,14 @@ func DefineDatasetSettings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
-		Index:      []string{"dataset"},
-		Body:       &buf,
+		Index: []string{"dataset"},
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update settings", 
-			"datasets", 
+			"update settings",
+			"datasets",
 			fmt.Sprintf("dataset settings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -94,22 +94,22 @@ func DefineDatasetSettings(c *gin.Context) {
 
 // DefineDatasetMappings initialises the datasets index and defines the custom
 // mappings for specific fields which need to be used as filters.
-// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// Mappings can only be defined BEFORE any data is indexed, updating mappings
 // requires reindexing.
 func DefineDatasetMappings(c *gin.Context) {
 	var buf bytes.Buffer
 	elasticMappings := gin.H{
 		"mappings": gin.H{
 			"properties": gin.H{
-				"publisherName": gin.H{"type": "keyword"},
-				"dataProvider": gin.H{"type": "keyword"},
-				"dataProviderColl": gin.H{"type": "keyword"},
-				"dataUseTitles": gin.H{"type": "keyword"},
-				"collectionName": gin.H{"type": "keyword"},
+				"publisherName":      gin.H{"type": "keyword"},
+				"dataProvider":       gin.H{"type": "keyword"},
+				"dataProviderColl":   gin.H{"type": "keyword"},
+				"dataUseTitles":      gin.H{"type": "keyword"},
+				"collectionName":     gin.H{"type": "keyword"},
 				"geographicLocation": gin.H{"type": "keyword"},
-				"accessService": gin.H{"type": "keyword"},
+				"accessService":      gin.H{"type": "keyword"},
 				"sampleAvailability": gin.H{"type": "keyword"},
-				"dataType": gin.H{"type": "keyword"},
+				"dataType":           gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -122,14 +122,14 @@ func DefineDatasetMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "dataset",
-		Body:       &buf,
+		Index: "dataset",
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"datasets", 
+			"update mappings",
+			"datasets",
 			fmt.Sprintf("dataset mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -156,9 +156,9 @@ func DefineDatasetMappings(c *gin.Context) {
 }
 
 // DefineToolSettings updates the settings of the tools index in elastic to use
-// a custom similarity scoring algorithm.  The mappings of the tools index are 
+// a custom similarity scoring algorithm.  The mappings of the tools index are
 // updated so that the custom similarity algorithm is applied to the description
-// field of the tools data. 
+// field of the tools data.
 func DefineToolSettings(c *gin.Context) {
 	// Elastic requires the index to be closed before settings are updated
 	closeIndexByName("tool")
@@ -169,8 +169,8 @@ func DefineToolSettings(c *gin.Context) {
 			"index": gin.H{
 				"similarity": gin.H{
 					"custom_similarity": gin.H{
-				  		"type": "BM25",
-				  		"b": 0.1,
+						"type": "BM25",
+						"b":    0.1,
 					},
 				},
 			},
@@ -185,8 +185,8 @@ func DefineToolSettings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
-		Index:      []string{"tool"},
-		Body:       &buf,
+		Index: []string{"tool"},
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
@@ -197,8 +197,8 @@ func DefineToolSettings(c *gin.Context) {
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		pubSubAudit(
-			"update settings", 
-			"tools", 
+			"update settings",
+			"tools",
 			fmt.Sprintf("tool settings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -211,10 +211,10 @@ func DefineToolSettings(c *gin.Context) {
 
 	var mappings bytes.Buffer
 	elasticMappings := gin.H{
-		"properties" : gin.H{
-			"description" : gin.H{
-				"type" : "text", 
-				"similarity" : "custom_similarity",
+		"properties": gin.H{
+			"description": gin.H{
+				"type":       "text",
+				"similarity": "custom_similarity",
 			},
 		},
 	}
@@ -227,14 +227,14 @@ func DefineToolSettings(c *gin.Context) {
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
-		Index:      []string{"tool"},
-		Body:       &mappings,
+		Index: []string{"tool"},
+		Body:  &mappings,
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"tools", 
+			"update mappings",
+			"tools",
 			fmt.Sprintf("tool mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -265,19 +265,20 @@ func DefineToolSettings(c *gin.Context) {
 
 // DefineToolMappings initialises the tool index and defines the custom
 // mappings for specific fields which need to be used as filters.
-// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// Mappings can only be defined BEFORE any data is indexed, updating mappings
 // requires reindexing.
 func DefineToolMappings(c *gin.Context) {
 	var buf bytes.Buffer
 	elasticMappings := gin.H{
 		"mappings": gin.H{
 			"properties": gin.H{
-				"dataProvider": gin.H{"type": "keyword"},
-				"dataProviderColl": gin.H{"type": "keyword"},
-				"license": gin.H{"type": "keyword"},
-				"datasetTitles": gin.H{"type": "keyword"},
+				"dataProvider":         gin.H{"type": "keyword"},
+				"dataProviderColl":     gin.H{"type": "keyword"},
+				"license":              gin.H{"type": "keyword"},
+				"datasetTitles":        gin.H{"type": "keyword"},
 				"programmingLanguages": gin.H{"type": "keyword"},
-				"typeCategory": gin.H{"type": "keyword"},
+				"typeCategory":         gin.H{"type": "keyword"},
+				"keywords":             gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -290,14 +291,14 @@ func DefineToolMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "tool",
-		Body:       &buf,
+		Index: "tool",
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"tools", 
+			"update mappings",
+			"tools",
 			fmt.Sprintf("tool mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -323,11 +324,10 @@ func DefineToolMappings(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-
 // DefineCollectionSettings updates the settings of the collections index in elastic to use
-// a custom similarity scoring algorithm.  The mappings of the collections index are 
+// a custom similarity scoring algorithm.  The mappings of the collections index are
 // updated so that the custom similarity algorithm is applied to the description
-// field of the collection data. 
+// field of the collection data.
 func DefineCollectionSettings(c *gin.Context) {
 	// Elastic requires the index to be closed before settings are updated
 	closeIndexByName("collection")
@@ -338,8 +338,8 @@ func DefineCollectionSettings(c *gin.Context) {
 			"index": gin.H{
 				"similarity": gin.H{
 					"custom_similarity": gin.H{
-				  		"type": "BM25",
-				  		"b": 0.1,
+						"type": "BM25",
+						"b":    0.1,
 					},
 				},
 			},
@@ -354,14 +354,14 @@ func DefineCollectionSettings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesPutSettingsRequest{
-		Index:      []string{"collection"},
-		Body:       &buf,
+		Index: []string{"collection"},
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update settings", 
-			"collections", 
+			"update settings",
+			"collections",
 			fmt.Sprintf("collection settings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -384,10 +384,10 @@ func DefineCollectionSettings(c *gin.Context) {
 
 	var mappings bytes.Buffer
 	elasticMappings := gin.H{
-		"properties" : gin.H{
-			"description" : gin.H{
-				"type" : "text", 
-				"similarity" : "custom_similarity",
+		"properties": gin.H{
+			"description": gin.H{
+				"type":       "text",
+				"similarity": "custom_similarity",
 			},
 		},
 	}
@@ -400,14 +400,14 @@ func DefineCollectionSettings(c *gin.Context) {
 	}
 
 	mappingsRequest := esapi.IndicesPutMappingRequest{
-		Index:      []string{"collection"},
-		Body:       &mappings,
+		Index: []string{"collection"},
+		Body:  &mappings,
 	}
 	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"collections", 
+			"update mappings",
+			"collections",
 			fmt.Sprintf("collection mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -436,20 +436,19 @@ func DefineCollectionSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
 }
 
-
 // DefineCollectionMappings initialises the collection index and defines the custom
 // mappings for specific fields which need to be used as filters.
-// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// Mappings can only be defined BEFORE any data is indexed, updating mappings
 // requires reindexing.
 func DefineCollectionMappings(c *gin.Context) {
 	var buf bytes.Buffer
 	elasticMappings := gin.H{
 		"mappings": gin.H{
 			"properties": gin.H{
-				"publisherName": gin.H{"type": "keyword"},
-				"dataProvider": gin.H{"type": "keyword"},
+				"publisherName":    gin.H{"type": "keyword"},
+				"dataProvider":     gin.H{"type": "keyword"},
 				"dataProviderColl": gin.H{"type": "keyword"},
-				"datasetTitles": gin.H{"type": "keyword"},
+				"datasetTitles":    gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -462,14 +461,14 @@ func DefineCollectionMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "collection",
-		Body:       &buf,
+		Index: "collection",
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"collections", 
+			"update mappings",
+			"collections",
 			fmt.Sprintf("collection mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -497,19 +496,19 @@ func DefineCollectionMappings(c *gin.Context) {
 
 // DefineDataUseMappings initialises the datauseregister index and defines the custom
 // mappings for specific fields which need to be used as filters.
-// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// Mappings can only be defined BEFORE any data is indexed, updating mappings
 // requires reindexing.
 func DefineDataUseMappings(c *gin.Context) {
 	var buf bytes.Buffer
 	elasticMappings := gin.H{
 		"mappings": gin.H{
 			"properties": gin.H{
-				"publisherName": gin.H{"type": "keyword"},
-				"dataProvider": gin.H{"type": "keyword"},
+				"publisherName":    gin.H{"type": "keyword"},
+				"dataProvider":     gin.H{"type": "keyword"},
 				"dataProviderColl": gin.H{"type": "keyword"},
-				"sector": gin.H{"type": "keyword"},
+				"sector":           gin.H{"type": "keyword"},
 				"organisationName": gin.H{"type": "keyword"},
-				"datasetTitles": gin.H{"type": "keyword"},
+				"datasetTitles":    gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -522,14 +521,14 @@ func DefineDataUseMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "datauseregister",
-		Body:       &buf,
+		Index: "datauseregister",
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"data uses", 
+			"update mappings",
+			"data uses",
 			fmt.Sprintf("data use mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -557,17 +556,17 @@ func DefineDataUseMappings(c *gin.Context) {
 
 // DefinePublicationMappings initialises the publication index and defines the custom
 // mappings for specific fields which need to be used as filters.
-// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// Mappings can only be defined BEFORE any data is indexed, updating mappings
 // requires reindexing.
 func DefinePublicationMappings(c *gin.Context) {
 	var buf bytes.Buffer
 	elasticMappings := gin.H{
 		"mappings": gin.H{
 			"properties": gin.H{
-				"publicationType": gin.H{"type": "keyword"},
-				"datasetTitles": gin.H{"type": "keyword"},
+				"publicationType":  gin.H{"type": "keyword"},
+				"datasetTitles":    gin.H{"type": "keyword"},
 				"datasetLinkTypes": gin.H{"type": "keyword"},
-				"publicationDate": gin.H{"type": "date"},
+				"publicationDate":  gin.H{"type": "date"},
 			},
 		},
 	}
@@ -580,14 +579,14 @@ func DefinePublicationMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "publication",
-		Body:       &buf,
+		Index: "publication",
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"publications", 
+			"update mappings",
+			"publications",
 			fmt.Sprintf("publication mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
@@ -615,7 +614,7 @@ func DefinePublicationMappings(c *gin.Context) {
 
 // DefineDataProviderMappings initialises the dataprovider index and defines the custom
 // mappings for specific fields which need to be used as filters.
-// Mappings can only be defined BEFORE any data is indexed, updating mappings 
+// Mappings can only be defined BEFORE any data is indexed, updating mappings
 // requires reindexing.
 func DefineDataProviderMappings(c *gin.Context) {
 	var buf bytes.Buffer
@@ -623,9 +622,9 @@ func DefineDataProviderMappings(c *gin.Context) {
 		"mappings": gin.H{
 			"properties": gin.H{
 				"geographicLocation": gin.H{"type": "keyword"},
-				"datasetTitles": gin.H{"type": "keyword"},
-				"dataType": gin.H{"type": "keyword"},
-				"dataProviderColl": gin.H{"type": "keyword"},
+				"datasetTitles":      gin.H{"type": "keyword"},
+				"dataType":           gin.H{"type": "keyword"},
+				"dataProviderColl":   gin.H{"type": "keyword"},
 			},
 		},
 	}
@@ -638,14 +637,14 @@ func DefineDataProviderMappings(c *gin.Context) {
 	}
 
 	request := esapi.IndicesCreateRequest{
-		Index:      "dataprovider",
-		Body:       &buf,
+		Index: "dataprovider",
+		Body:  &buf,
 	}
 	response, err := request.Do(context.TODO(), ElasticClient)
 	if err != nil {
 		pubSubAudit(
-			"update mappings", 
-			"data providers", 
+			"update mappings",
+			"data providers",
 			fmt.Sprintf("data provider mappings failed to update with error: %s", err.Error()),
 		)
 		slog.Debug(fmt.Sprintf(
