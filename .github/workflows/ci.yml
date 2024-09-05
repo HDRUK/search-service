@@ -9,10 +9,21 @@ on:
     branches:
       - main
       - dev
+
+env:
+  SLACK_WEBHOOK_URL: '${{ secrets.SLACK_WEBHOOK_URL}}'
+  SLACK_CHANNEL: '${{ secrets.GITHUBACTIONS_SLACK_CHANNEL }}'
+
 jobs:
   test:
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    environment: |-
+      ${{
+         github.ref_name == 'dev' && 'dev'
+      || github.base_ref == 'dev' && 'dev'
+      ||                             'release'
+      }}
 
     steps:
     - name: Set up Go
@@ -25,3 +36,13 @@ jobs:
 
     - name: Run unit tests
       run: "go test ./..."
+    
+    - name: Run Notification
+      id: runnotificationsent
+      uses: act10ns/slack@v1
+      with:
+        status: ${{ job.status }}
+        steps: ${{ toJson(steps) }}
+        channel: ${{ env.SLACK_CHANNEL }}
+        message: Running CI tests on {{ env.GITHUB_REF_NAME }} branch ${{ job.status }}
+      if: always()
