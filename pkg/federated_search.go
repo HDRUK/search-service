@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -76,14 +75,15 @@ func DOISearch(c *gin.Context) {
 		return
 	}
 
-	doi := extractDOI(query.QueryString)
+	queryString := buildDoiQuery(query)
 
 	urlPath := fmt.Sprintf(
-		"%s/search?query=%s:%s&resultType=core&format=json&pageSize=100",
+		"%s/search?%s&resultType=core&format=json&pageSize=100",
 		os.Getenv("PMC_URL"),
-		"DOI",
-		url.QueryEscape(doi),
+		queryString,
 	)
+
+	fmt.Println(urlPath)
 
 	respBody := getPMC(urlPath)
 
@@ -153,6 +153,20 @@ func extractDOI(doi string) string {
 	doiNum = strings.Replace(doiNum, ")", "\\)", -1)
 
 	return doiNum
+}
+
+func buildDoiQuery(query Query) string {
+	doi := extractDOI(query.QueryString)
+	queryString := fmt.Sprintf("query=(%s:DOI)", doi)
+
+	_, ok := query.Filters["paper"]
+	if ok {
+		filterString := getFilters(query.Filters)
+		queryString = fmt.Sprintf("%s%%20AND%%20%s", queryString, filterString)
+		return queryString
+	} else {
+		return queryString
+	}
 }
 
 func buildQueryString(query FieldQuery) string {
