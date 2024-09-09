@@ -83,8 +83,6 @@ func DOISearch(c *gin.Context) {
 		queryString,
 	)
 
-	fmt.Println(urlPath)
-
 	respBody := getPMC(urlPath)
 
 	var result PMCCoreResponse
