@@ -880,6 +880,7 @@ func publicationElasticConfig(query Query) gin.H {
 			"publicationType",
 			"authors",
 			"datasetTitles",
+			"doi",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
