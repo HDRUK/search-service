@@ -204,8 +204,7 @@ func TestBuildDoiQuery(t *testing.T) {
 	
 	queryString := buildDoiQuery(query)
 	
-	assert.Contains(t, queryString, "DOI")
-	assert.Contains(t, queryString, "10.3310/abcde")
+	assert.Contains(t, queryString, "DOI:10.3310/abcde")
 	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
 	assert.Contains(t, queryString, "SRC:PPR")
 	assert.Contains(t, queryString, "PUB_YEAR:[2020%20TO%202021]")
