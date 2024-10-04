@@ -155,7 +155,7 @@ func extractDOI(doi string) string {
 
 func buildDoiQuery(query Query) string {
 	doi := extractDOI(query.QueryString)
-	queryString := fmt.Sprintf("query=(%s:DOI)", doi)
+	queryString := fmt.Sprintf("query=(DOI:%s)", doi)
 
 	_, ok := query.Filters["paper"]
 	if ok {
