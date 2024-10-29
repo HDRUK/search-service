@@ -169,6 +169,13 @@ func TestFieldSearch(t *testing.T) {
 
 	assert.EqualValues(t, 1, int(testResp.HitCount))
 	assert.EqualValues(t, "0000000", testResp.ResultList["result"][0].ID)
+	assert.Contains(t, testResp.Aggregations, "startDate")
+	assert.Contains(t, testResp.Aggregations, "endDate")
+
+	startDate := testResp.Aggregations["startDate"].(map[string]interface{})["value_as_string"].(string)
+	assert.EqualValues(t, startDate, "2020-01-01T00:00:00Z")
+	endDate := testResp.Aggregations["endDate"].(map[string]interface{})["value_as_string"].(string)
+	assert.EqualValues(t, endDate, "2020-01-01T00:00:00Z")
 }
 
 func TestBuildQueryString(t *testing.T) {

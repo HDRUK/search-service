@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +26,7 @@ type PMCCoreResponse struct {
 	NextPageUrl    string                 `json:"nextPageUrl"`
 	Request        map[string]interface{} `json:"request"`
 	ResultList     map[string][]PaperCore `json:"resultList"`
+	Aggregations   map[string]interface{} `json:"aggregations"`
 }
 
 // PaperCore represents the data returned from EuropePMC about each paper from the
@@ -112,6 +114,9 @@ func FieldSearch(c *gin.Context) {
 
 	var result PMCCoreResponse
 	json.Unmarshal(respBody, &result)
+
+	aggs := calculateAggregations(result)
+	result.Aggregations = aggs
 
 	c.JSON(http.StatusOK, result)
 }
@@ -235,6 +240,28 @@ func publicationTypeFilter(pubType string) string {
 	}
 
 	return filterStr
+}
+
+func calculateAggregations(results PMCCoreResponse) gin.H {
+	aggregations := make(map[string]interface{})
+	minDate := time.Now()
+	maxDate, _ := time.Parse("2006", "1900")
+	for _, res := range(results.ResultList["result"]) {
+		d, err := time.Parse("2006", res.PubYear)
+		if err != nil {
+			slog.Info(fmt.Sprintf("Failed to convert year to date: %s", res.PubYear))
+		}
+		if (d.Before(minDate)) {
+			minDate = d
+		}
+		if (d.After(maxDate)) {
+			maxDate = d
+		}
+
+	}
+	aggregations["startDate"] = gin.H{"value_as_string": minDate.Format(time.RFC3339)}
+	aggregations["endDate"] = gin.H{"value_as_string": maxDate.Format(time.RFC3339)}
+	return aggregations
 }
 
 func reverse(str string) (result string) { 
