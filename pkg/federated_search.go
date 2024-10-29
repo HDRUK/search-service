@@ -250,6 +250,7 @@ func calculateAggregations(results PMCCoreResponse) gin.H {
 		d, err := time.Parse("2006", res.PubYear)
 		if err != nil {
 			slog.Info(fmt.Sprintf("Failed to convert year to date: %s", res.PubYear))
+			continue
 		}
 		if (d.Before(minDate)) {
 			minDate = d
