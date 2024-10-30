@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"reflect"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
@@ -214,7 +215,7 @@ func datasetSearch(query Query, perPage int, page int) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query.QueryString)
+	stripExplanation(elasticResp, query, "dataset")
 
 	return elasticResp
 }
@@ -420,7 +421,7 @@ func toolSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query.QueryString)
+	stripExplanation(elasticResp, query, "tool")
 
 	return elasticResp
 }
@@ -577,7 +578,7 @@ func collectionSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query.QueryString)
+	stripExplanation(elasticResp, query, "collection")
 
 	return elasticResp
 }
@@ -739,7 +740,7 @@ func dataUseSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query.QueryString)
+	stripExplanation(elasticResp, query, "dur")
 
 	return elasticResp
 }
@@ -893,7 +894,7 @@ func publicationSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query.QueryString)
+	stripExplanation(elasticResp, query, "publication")
 
 	return elasticResp
 }
@@ -913,6 +914,7 @@ func publicationElasticConfig(query Query) gin.H {
 			"publicationType",
 			"authors",
 			"datasetTitles",
+			"doi",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
@@ -1062,7 +1064,7 @@ func dataProviderSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query.QueryString)
+	stripExplanation(elasticResp, query, "dataProvider")
 
 	return elasticResp
 }
@@ -1178,21 +1180,40 @@ func populationRanges() []gin.H {
 }
 
 // Remove the explanations from a SearchResponse to reduce its size
-func stripExplanation(elasticResp SearchResponse, queryString string) {
+// And send explanation to search explanation extractor
+func stripExplanation(elasticResp SearchResponse, query Query, entityType string) {
+	_, expEnabled := os.LookupEnv("SEARCH_EXPLANATION_EXTRACTOR")
+	// Send explanation if enabled, entity is dataset and query is not empty
+	if expEnabled && entityType == "dataset" && !reflect.ValueOf(query).IsZero() {
+		respCopy := copyResponseHits(elasticResp)
+		go extractExplanation(respCopy, query)
+	}
+
 	for i := range elasticResp.Hits.Hits {
 		elasticResp.Hits.Hits[i].Explanation = make(map[string]interface{}, 0)
 	}
+}
 
-	_, expEnabled := os.LookupEnv("SEARCH_EXPLANATION_EXTRACTOR")
-	if expEnabled {
-		go extractExplanation(elasticResp, queryString)
+func copyResponseHits(r SearchResponse) SearchResponse {
+	var hits []Hit
+	hits = append(hits, r.Hits.Hits...)
+	hitsField := HitsField{
+		Hits: hits,
+	}
+	return SearchResponse{
+		Hits: hitsField,
 	}
 }
 
-func extractExplanation(elasticResp SearchResponse, queryString string) {
+func extractExplanation(elasticResp SearchResponse, query Query) {
 	bodyContent := gin.H{
+<<<<<<< HEAD
 		"data":              elasticResp,
 		"query":             queryString,
+=======
+		"data": elasticResp,
+		"query": fmt.Sprintf("%s", query),
+>>>>>>> origin/dev
 		"destination_table": os.Getenv("SEARCH_EXPLANATION_TABLE"),
 	}
 	body, err := json.Marshal(bodyContent)

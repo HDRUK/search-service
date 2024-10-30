@@ -190,3 +190,22 @@ func TestBuildQueryString(t *testing.T) {
 	assert.Contains(t, queryString, "SRC:PPR")
 	assert.Contains(t, queryString, "PUB_YEAR:[2020%20TO%202021]")
 }
+
+func TestBuildDoiQuery(t *testing.T) {
+	query := Query{
+		QueryString: "https://doi.org/10.3310/abcde",
+		Filters: map[string]map[string]interface{}{
+			"paper": {
+				"publicationDate": []interface{}{"2020", "2021"},
+				"publicationType": []interface{}{"Review articles", "Preprints"},
+			},
+		},
+	}
+	
+	queryString := buildDoiQuery(query)
+	
+	assert.Contains(t, queryString, "DOI:10.3310/abcde")
+	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
+	assert.Contains(t, queryString, "SRC:PPR")
+	assert.Contains(t, queryString, "PUB_YEAR:[2020%20TO%202021]")
+}

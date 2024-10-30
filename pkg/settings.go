@@ -38,7 +38,7 @@ func DefineDatasetSettings(c *gin.Context) {
 					},
 					"filter": gin.H{
 						"medterms_synonyms": gin.H{
-							"type":         "synonym",
+							"type": "synonym_graph",
 							"synonyms_set": "hdr_synonyms_set",
 							"updateable":   true,
 						},
@@ -110,6 +110,7 @@ func DefineDatasetMappings(c *gin.Context) {
 				"accessService":      gin.H{"type": "keyword"},
 				"sampleAvailability": gin.H{"type": "keyword"},
 				"dataType":           gin.H{"type": "keyword"},
+				"dataSubType":        gin.H{"type": "keyword"},
 			},
 		},
 	}
