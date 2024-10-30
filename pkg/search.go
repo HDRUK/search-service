@@ -10,8 +10,8 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"strconv"
 	"reflect"
+	"strconv"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
@@ -1207,13 +1207,8 @@ func copyResponseHits(r SearchResponse) SearchResponse {
 
 func extractExplanation(elasticResp SearchResponse, query Query) {
 	bodyContent := gin.H{
-<<<<<<< HEAD
 		"data":              elasticResp,
-		"query":             queryString,
-=======
-		"data": elasticResp,
-		"query": fmt.Sprintf("%s", query),
->>>>>>> origin/dev
+		"query":             fmt.Sprintf("%s", query),
 		"destination_table": os.Getenv("SEARCH_EXPLANATION_TABLE"),
 	}
 	body, err := json.Marshal(bodyContent)
