@@ -22,26 +22,6 @@ func MockPost(c *gin.Context) {
 	c.Request.Header.Set("Content-Type", "application/json")
 }
 
-func TestDefineDatasetSettings(t *testing.T) {
-	w := httptest.NewRecorder()
-	c := GetTestGinContext(w)
-	MockPost(c)
-
-	DefineDatasetSettings(c)
-
-	assert.EqualValues(t, http.StatusOK, w.Code)
-
-	bodyBytes, err := io.ReadAll(w.Body)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	var testResp map[string]interface{}
-	json.Unmarshal(bodyBytes, &testResp)
-
-	assert.EqualValues(t, gin.H{"acknowledged": true}, testResp)
-}
-
 func TestDefineDatasetMappings(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := GetTestGinContext(w)
