@@ -13,85 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DefineDatasetSettings updates the settings of the datasets index in elastic
-// to use a custom analyzer.  This analyzer includes synonym analysis based on
-// a file of synonyms called hdr_synonyms_set, which must be present _synonyms
-// collection of the elastic deployment.
-func DefineDatasetSettings(c *gin.Context) {
-	// Elastic requires the index to be closed before settings are updated
-	closeIndexByName("dataset")
-
-	var buf bytes.Buffer
-	elasticSettings := gin.H{
-		"settings": gin.H{
-			"index": gin.H{
-				"analysis": gin.H{
-					"analyzer": gin.H{
-						"medterms_analyzer": gin.H{
-							"tokenizer": "standard",
-							"filter": []string{
-								"lowercase",
-								"stemmer",
-								"medterms_synonyms",
-							},
-						},
-					},
-					"filter": gin.H{
-						"medterms_synonyms": gin.H{
-							"type": "synonym_graph",
-							"synonyms_set": "hdr_synonyms_set",
-							"updateable":   true,
-						},
-					},
-				},
-			},
-		},
-	}
-	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticSettings,
-			err.Error()),
-		)
-	}
-
-	request := esapi.IndicesPutSettingsRequest{
-		Index: []string{"dataset"},
-		Body:  &buf,
-	}
-	response, err := request.Do(context.TODO(), ElasticClient)
-	if err != nil {
-		pubSubAudit(
-			"update settings",
-			"datasets",
-			fmt.Sprintf("dataset settings failed to update with error: %s", err.Error()),
-		)
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
-		return
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-	var resp map[string]interface{}
-	json.Unmarshal(body, &resp)
-
-	// Reopen the index
-	openIndexByName("dataset")
-
-	pubSubAudit("update settings", "datasets", "dataset settings sucessfully updated")
-
-	c.JSON(http.StatusOK, resp)
-}
-
 // DefineDatasetMappings initialises the datasets index and defines the custom
 // mappings for specific fields which need to be used as filters.
 // Mappings can only be defined BEFORE any data is indexed, updating mappings
@@ -99,8 +20,88 @@ func DefineDatasetSettings(c *gin.Context) {
 func DefineDatasetMappings(c *gin.Context) {
 	var buf bytes.Buffer
 	elasticMappings := gin.H{
+		"settings": gin.H{
+			"index": gin.H{
+				"analysis": gin.H{
+					"analyzer": gin.H{
+						//index analyzer
+						"medterms_index_analyzer": gin.H{
+							"tokenizer": "standard",
+							"filter": []string{
+								"lowercase",
+								"keyword_repeat",
+								"english_stemmer",
+							},
+						},
+						//search analyzer
+						"medterms_search_analyzer": gin.H{
+							"tokenizer": "standard",
+							"filter": []string{
+								"lowercase",
+								"medterms_synonyms",
+								"keyword_repeat",
+								"english_stemmer",
+							},
+						},
+					},
+					"filter": gin.H{
+						"english_stemmer": gin.H{
+							"type":     "stemmer",
+							"language": "english",
+						},
+						"medterms_synonyms": gin.H{
+							"type":         "synonym_graph",
+							"synonyms_set": "hdr_synonyms_set",
+							"updateable":   true,
+						},
+					},
+				},
+			},
+		},
 		"mappings": gin.H{
 			"properties": gin.H{
+				"title": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
+				"shortTitle": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
+				"abstract": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
+				"description": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
+				"keywords": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
+				"named_entities": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
 				"publisherName":      gin.H{"type": "keyword"},
 				"dataProvider":       gin.H{"type": "keyword"},
 				"dataProviderColl":   gin.H{"type": "keyword"},
