@@ -18,7 +18,7 @@ func main() {
 	}
 
 	debugLogs := os.Getenv("DEBUG_LOGGING")
-	if (debugLogs == "true") {
+	if debugLogs == "true" {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	} else {
 		slog.SetLogLoggerLevel(slog.LevelInfo)
@@ -35,7 +35,6 @@ func main() {
 	router.POST("/search/dur", search.DataUseSearch)
 	router.POST("/search/publications", search.PublicationSearch)
 	router.POST("/search/data_providers", search.DataProviderSearch)
-	router.POST("/settings/datasets", search.DefineDatasetSettings)
 	router.POST("/settings/tools", search.DefineToolSettings)
 	router.POST("/settings/collections", search.DefineCollectionSettings)
 	router.POST("/mappings/datasets", search.DefineDatasetMappings)

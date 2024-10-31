@@ -169,6 +169,13 @@ func TestFieldSearch(t *testing.T) {
 
 	assert.EqualValues(t, 1, int(testResp.HitCount))
 	assert.EqualValues(t, "0000000", testResp.ResultList["result"][0].ID)
+	assert.Contains(t, testResp.Aggregations, "startDate")
+	assert.Contains(t, testResp.Aggregations, "endDate")
+
+	startDate := testResp.Aggregations["startDate"].(map[string]interface{})["value_as_string"].(string)
+	assert.EqualValues(t, startDate, "2020-01-01T00:00:00Z")
+	endDate := testResp.Aggregations["endDate"].(map[string]interface{})["value_as_string"].(string)
+	assert.EqualValues(t, endDate, "2020-01-01T00:00:00Z")
 }
 
 func TestBuildQueryString(t *testing.T) {
@@ -208,4 +215,26 @@ func TestBuildDoiQuery(t *testing.T) {
 	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
 	assert.Contains(t, queryString, "SRC:PPR")
 	assert.Contains(t, queryString, "PUB_YEAR:[2020%20TO%202021]")
+}
+
+func TestCalculateAggregations(t *testing.T) {
+	pmcCore := PMCCoreResponse{
+		ResultList: map[string][]PaperCore{
+			"result": {
+				{PubYear: "2020"},
+				{PubYear: "2002"},
+				{PubYear: "24"},
+			},
+		},
+	}
+
+	aggregations := calculateAggregations(pmcCore)
+
+	assert.Contains(t, aggregations, "startDate")
+	assert.Contains(t, aggregations, "endDate")
+	startDate := aggregations["startDate"].(gin.H)["value_as_string"].(string)
+	assert.EqualValues(t, startDate, "2002-01-01T00:00:00Z")
+	// Assert end date is "2020" which is latest valid end date passed
+	endDate := aggregations["endDate"].(gin.H)["value_as_string"].(string)
+	assert.EqualValues(t, endDate, "2020-01-01T00:00:00Z")
 }
