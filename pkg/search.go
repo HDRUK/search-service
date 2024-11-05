@@ -1145,7 +1145,7 @@ func buildAggregations(query Query) gin.H {
 func populationRanges() []gin.H {
 	var ranges []gin.H
 	ranges = append(ranges, gin.H{"from": -1.0, "to": 1.0, "key": "Unreported"})
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 9; i++ {
 		ranges = append(ranges, gin.H{"from": math.Pow(10, float64(i)), "to": math.Pow(10, float64(i+1))})
 	}
 	return ranges
