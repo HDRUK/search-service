@@ -308,12 +308,6 @@ func datasetElasticConfig(query Query) gin.H {
 	}
 
 	agg1 := buildAggregations(query)
-	jsonData, err := json.MarshalIndent(mainQuery, "", "  ")
-	if err != nil {
-		slog.Error("Failed to marshal mainQuery to JSON", err)
-	} else {
-		slog.Debug(string(jsonData))
-	}
 
 	return gin.H{
 		"size":  100,
