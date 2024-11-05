@@ -29,7 +29,6 @@ func DefineDatasetMappings(c *gin.Context) {
 							"tokenizer": "standard",
 							"filter": []string{
 								"lowercase",
-								"keyword_repeat",
 								"english_stemmer",
 							},
 						},
@@ -39,7 +38,6 @@ func DefineDatasetMappings(c *gin.Context) {
 							"filter": []string{
 								"lowercase",
 								"medterms_synonyms",
-								"keyword_repeat",
 								"english_stemmer",
 							},
 						},
