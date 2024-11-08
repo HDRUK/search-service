@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +57,12 @@ type PaperUrl struct {
 
 type FieldQuery struct {
 	QueryString string `json:"query"`
+	Field       []string `json:"field"`
+	Filters     map[string]map[string]interface{} `json:"filters"`
+}
+
+type ArrayFieldQuery struct {
+	QueryString []string `json:"query"`
 	Field       []string `json:"field"`
 	Filters     map[string]map[string]interface{} `json:"filters"`
 }
@@ -120,6 +128,78 @@ func FieldSearch(c *gin.Context) {
 
 	c.JSON(http.StatusOK, result)
 }
+
+// ArrayFieldSearch searches the EuropePMC articles API for papers where the given 
+// query strings appears in the given field (e.g. "ABSTRACT", "METHODS", "SUPPL").
+// Returns results as an array of PaperCore.
+func ArrayFieldSearch(c *gin.Context) {
+	var queryArray ArrayFieldQuery
+	if err := c.BindJSON(&queryArray); err != nil {
+		return
+	}
+
+	allResults := PMCCoreResponse{
+		ResultList: map[string][]PaperCore{
+			"result": {},
+		},
+	}
+	maxResults := 100
+
+	resultChannel := make(chan PMCCoreResponse)
+	var wg sync.WaitGroup
+
+	for _, query := range(queryArray.QueryString) {
+		wg.Add(1)
+		go func(query string) {
+			defer wg.Done()
+			resultChannel <- epmcFieldQuey(query, queryArray)
+		}(query)
+	}
+	
+	go func() {
+		wg.Wait()
+		close(resultChannel)
+	}()
+
+	results := [][]PaperCore{}
+	for r := range(resultChannel) {
+		results = append(results, r.ResultList["result"])
+	}
+	shuffledResults := shuffleArrays(results)
+	if len(shuffledResults) < maxResults {
+		allResults.ResultList["result"] = shuffledResults
+	} else {
+		allResults.ResultList["result"] = shuffledResults[0:maxResults]
+	}
+
+	aggs := calculateAggregations(allResults)
+	allResults.Aggregations = aggs
+	allResults.HitCount = len(allResults.ResultList["result"])
+
+	c.JSON(http.StatusOK, allResults)
+}
+
+func epmcFieldQuey(query string, queryArray ArrayFieldQuery) PMCCoreResponse {
+	singleFieldQuery := FieldQuery{
+		QueryString: query,
+		Field: queryArray.Field,
+		Filters: queryArray.Filters,
+	}
+	queryString := buildQueryString(singleFieldQuery)
+
+	urlPath := fmt.Sprintf(
+		"%s/search?%s&resultType=core&format=json&pageSize=100",
+		os.Getenv("PMC_URL"),
+		queryString,
+	)
+
+	respBody := getPMC(urlPath)
+
+	var result PMCCoreResponse
+	json.Unmarshal(respBody, &result)
+
+	return result
+} 
 
 // getPMC queries the EuropePMC articles API using the given urlPath.
 func getPMC(urlPath string) []byte {
@@ -270,4 +350,26 @@ func reverse(str string) (result string) {
         result = string(v) + result 
     } 
     return
+}
+
+// shuffleArrays takes an array of arrays of generic type and
+// returns a single array where the elements are the first of each input array,
+// the second of each input array, etc until all input arrays are exhausted.
+func shuffleArrays[A any](results [][]A) (shuffledResults []A) {
+	lengths := make([]int, len(results))
+	for i, r := range(results) {
+		lengths[i] = len(r)
+	}
+	sortedLengths := append([]int{}, lengths...)
+	sort.Ints(sortedLengths)
+	maximum := sortedLengths[len(sortedLengths)-1]
+
+	for j := 0; j < maximum; j++ {
+		for k := 0; k < len(results); k++ {
+			if (j < lengths[k]) {
+				shuffledResults = append(shuffledResults, results[k][j])
+			}
+		}
+	}
+	return
 }
