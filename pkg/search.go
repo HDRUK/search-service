@@ -215,7 +215,6 @@ func datasetElasticConfig(query Query) gin.H {
 			"description",
 			"shortTitle",
 			"title",
-			"publisherName",
 			"named_entities",
 			"datasetDOI",
 		}
