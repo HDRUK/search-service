@@ -52,7 +52,9 @@ func MockElasticClient() *elasticsearch.Client {
 				"took": 3,
 				"timed_out": false,
 				"_shards": {},
-				"hits": {},
+				"hits": {
+					"hits": []
+				},
 				"aggregations": {}
 			}`
 		}
