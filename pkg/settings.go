@@ -38,7 +38,7 @@ func DefineDatasetMappings(c *gin.Context) {
 							"filter": []string{
 								"lowercase",
 								"medterms_synonyms",
-								//"english_stemmer",
+								"english_stemmer",
 							},
 						},
 					},
