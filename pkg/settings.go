@@ -789,7 +789,7 @@ func DefineDataCustodianNetworkMappings(c *gin.Context) {
 	elasticMappings := gin.H{
 		"mappings": gin.H{
 			"properties": gin.H{
-				"publisherName":    gin.H{"type": "keyword"},
+				"publisherNames":   gin.H{"type": "keyword"},
 				"datasetTitles":    gin.H{"type": "keyword"},
 				"durTitles":        gin.H{"type": "keyword"},
 				"toolNames":        gin.H{"type": "keyword"},
