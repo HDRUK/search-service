@@ -37,12 +37,15 @@ func main() {
 	router.POST("/search/data_providers", search.DataProviderSearch)
 	router.POST("/settings/tools", search.DefineToolSettings)
 	router.POST("/settings/collections", search.DefineCollectionSettings)
+	router.POST("/settings/data_custodian_networks", search.DefineDataCustodianNetworkSettings)
 	router.POST("/mappings/datasets", search.DefineDatasetMappings)
 	router.POST("/mappings/collections", search.DefineCollectionMappings)
 	router.POST("/mappings/dur", search.DefineDataUseMappings)
 	router.POST("/mappings/publications", search.DefinePublicationMappings)
 	router.POST("/mappings/tools", search.DefineToolMappings)
 	router.POST("/mappings/data_providers", search.DefineDataProviderMappings)
+	router.POST("/mappings/data_custodian_networks", search.DefineDataCustodianNetworkMappings)
+
 	router.POST("/filters", search.ListFilters)
 	router.POST("/similar/datasets", search.SearchSimilarDatasets)
 
