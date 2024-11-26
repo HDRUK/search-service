@@ -84,6 +84,17 @@ type Hit struct {
 	Highlight   map[string][]string    `json:"highlight"`
 }
 
+type SearchErrorResponse struct {
+	Error	map[string][]RootCause	`json:"error"`
+	Status	int							`json:"status"`
+}
+
+type RootCause struct {
+	Type 	string `json:"type"`
+	Reason 	string `json:"reason"`
+	Index 	string `json:"index"`
+}
+
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
 // tools and collections, using the query supplied in the gin.Context.
 // Search results are returned grouped by entity type.
@@ -190,9 +201,20 @@ func datasetSearch(query Query) SearchResponse {
 		// for example an aggregation that cannot be calculated.
 		// So we throw a warning in the case where hits == nil and more info
 		// if debug mode is on.
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		var elasticError SearchErrorResponse
+		json.Unmarshal(body, &elasticError)
+		// Try to extract the root cause message; if unable throw generic warning
+		rootCause := elasticError.Error["root_cause"][0]
+		if rootCause.Reason != "" {
+			slog.Warn(
+				fmt.Sprintf("Search query returned elastic error: %s", 
+				rootCause.Reason,
+			))
+		} else {
+			slog.Warn(fmt.Sprint(
+				"Hits from elastic are null, query may be malformed",
+			))
+		}
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -215,7 +237,6 @@ func datasetElasticConfig(query Query) gin.H {
 			"description",
 			"shortTitle",
 			"title",
-			"publisherName",
 			"named_entities",
 			"datasetDOI",
 		}
