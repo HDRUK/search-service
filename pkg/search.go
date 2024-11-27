@@ -136,8 +136,8 @@ func SearchGeneric(c *gin.Context) {
 			results["publication"] = publications
 		case dataProviders := <-dataProviderResults:
 			results["dataProvider"] = dataProviders
-		case dataCustodiaNnetworks := <-dataProviderResults:
-			results["datacustodiannetwork"] = dataCustodiaNnetworks
+		case dataCustodianNetworks := <-dataCustodianNetworkResults:
+			results["datacustodiannetwork"] = dataCustodianNetworks
 		}
 	}
 
@@ -1209,7 +1209,7 @@ func dataCustodianNetworkSearch(query Query) SearchResponse {
 	return elasticResp
 }
 
-// collectionsElasticConfig defines the body of the query to the elastic collections index
+// dataCustodianNetworkElasticConfig defines the body of the query to the elastic datacustodiannetwork index
 func dataCustodianNetworkElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
