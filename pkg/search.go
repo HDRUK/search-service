@@ -122,7 +122,7 @@ func SearchGeneric(c *gin.Context) {
 	go dataProviderChannel(query, dataProviderResults)
 	go dataCustodianNetworkChannel(query, dataCustodianNetworkResults)
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 7; i++ {
 		select {
 		case datasets := <-datasetResults:
 			results["dataset"] = datasets
