@@ -1082,6 +1082,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 			"publicationTitles",
 			"collectionNames",
 			"durTitles",
+			"toolNames",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
