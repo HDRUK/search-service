@@ -625,6 +625,9 @@ func DefineDataProviderMappings(c *gin.Context) {
 				"datasetTitles":      gin.H{"type": "keyword"},
 				"dataType":           gin.H{"type": "keyword"},
 				"dataProviderColl":   gin.H{"type": "keyword"},
+				"publicationTitles":  gin.H{"type": "keyword"},
+				"collectionNames":    gin.H{"type": "keyword"},
+				"durTitles":          gin.H{"type": "keyword"},
 			},
 		},
 	}
