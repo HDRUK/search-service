@@ -95,6 +95,28 @@ func MockPostToFieldSearch(c *gin.Context) {
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 }
 
+func MockPostToArrayFieldSearch(c *gin.Context) {
+	c.Request.Method = "POST"
+	c.Request.Header.Set("Content-Type", "application/json")
+	bodyContent := gin.H{
+		"query": []string{"A Very Useful Dataset (AVUD)", "A Second Very Useful Dataset (ASVUD)"},
+		"field": []string{
+			"TITLE","ABSTRACT","METHODS",
+		},
+		"filters": gin.H{
+			"paper": gin.H{
+				"publicationDate": []string{"2020", "2021"},
+				"publicationType": []string{"Review articles", "Preprints"},
+			},
+		},
+	}
+	bodyBytes, err := json.Marshal(bodyContent)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+}
+
 func TestExtractDOI(t *testing.T) {
 	doi := "https://doi.org/10.1010/a11-22(22)33v3"
 	extracted := extractDOI(doi)
@@ -178,6 +200,39 @@ func TestFieldSearch(t *testing.T) {
 	assert.EqualValues(t, endDate, "2020-01-01T00:00:00Z")
 }
 
+func TestArrayFieldSearch(t *testing.T) {
+
+	mocks.GetDoFunc = func(req *http.Request) (*http.Response, error) {
+		// Create a reader with the GET json response
+		r := io.NopCloser(bytes.NewReader([]byte(epmcRespJson)))
+		return &http.Response{
+			StatusCode: 200,
+			Body:       r,
+		}, nil
+	}
+
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToArrayFieldSearch(c)
+
+	ArrayFieldSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp PMCCoreResponse
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.EqualValues(t, 2, int(testResp.HitCount))
+	assert.EqualValues(t, "0000000", testResp.ResultList["result"][0].ID)
+	assert.Contains(t, testResp.Aggregations, "startDate")
+	assert.Contains(t, testResp.Aggregations, "endDate")
+}
+
 func TestBuildQueryString(t *testing.T) {
 	query := FieldQuery{
 		QueryString: "A Very Useful Dataset (AVUD)",
@@ -237,4 +292,17 @@ func TestCalculateAggregations(t *testing.T) {
 	// Assert end date is "2020" which is latest valid end date passed
 	endDate := aggregations["endDate"].(gin.H)["value_as_string"].(string)
 	assert.EqualValues(t, endDate, "2020-01-01T00:00:00Z")
+}
+
+func TestShuffleArrays(t *testing.T) {
+	a := []string{"A", "B", "C"}
+	b := []string{"A"}
+	c := []string{"A", "B"}
+
+	input := [][]string{a, b, c}
+
+	shuffled := shuffleArrays(input)
+	expected := []string{"A", "A", "A", "B", "B", "C"}
+
+	assert.EqualValues(t, expected, shuffled)
 }
