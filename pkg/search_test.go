@@ -85,6 +85,7 @@ func TestSearchGeneric(t *testing.T) {
 	assert.Contains(t, testResp, "dataUseRegister")
 	assert.Contains(t, testResp, "publication")
 	assert.Contains(t, testResp, "dataProvider")
+	assert.Contains(t, testResp, "datacustodiannetwork")
 
 	datasetResp := testResp["dataset"].(map[string]interface{})
 	assert.EqualValues(t, 3, int(datasetResp["took"].(float64)))
@@ -140,6 +141,28 @@ func TestCollectionSearch(t *testing.T) {
 	MockPostToSearch(c)
 
 	CollectionSearch(c)
+
+	assert.EqualValues(t, http.StatusOK, w.Code)
+
+	bodyBytes, err := io.ReadAll(w.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var testResp map[string]interface{}
+	json.Unmarshal(bodyBytes, &testResp)
+
+	assert.Contains(t, testResp, "hits")
+	assert.Contains(t, testResp, "took")
+	assert.EqualValues(t, 3, int(testResp["took"].(float64)))
+}
+
+func TestDataCostodianNetworkSearch(t *testing.T) {
+	w := httptest.NewRecorder()
+	c := GetTestGinContext(w)
+	MockPostToSearch(c)
+
+	DataCustodianNetworkSearch(c)
 
 	assert.EqualValues(t, http.StatusOK, w.Code)
 
@@ -262,8 +285,8 @@ func TestDatasetElasticConfig(t *testing.T) {
 				},
 				"populationSize": map[string]interface{}{
 					"includeUnreported": true,
-					"from": 1000,
-					"to": 10000,
+					"from":              1000,
+					"to":                10000,
 				},
 			},
 		},
@@ -306,7 +329,7 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, queryStr, "\"lte\":10000")
 	assert.Contains(t, queryStr, "\"gte\":1000")
 	assert.Contains(t, queryStr, "\"populationSize\":-1")
-	
+
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, datasetConfig, "aggs")
 	aggsClause := datasetConfig["aggs"].(gin.H)
@@ -351,7 +374,7 @@ func TestCollectionElasticConfig(t *testing.T) {
 	// assert specific filter keys are included
 	assert.Contains(t, queryStr, "\"datasetTitles\":\"title A\"")
 	assert.Contains(t, queryStr, "\"datasetTitles\":\"title B\"")
-	
+
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, collectionConfig, "aggs")
 	aggsClause := collectionConfig["aggs"].(gin.H)
@@ -416,7 +439,7 @@ func TestDataUseElasticConfig(t *testing.T) {
 
 	// assert specific filter keys are included
 	assert.Contains(t, queryStr, "\"sector\":\"sector A\"")
-	
+
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, durConfig, "aggs")
 	aggsClause := durConfig["aggs"].(gin.H)
@@ -476,7 +499,7 @@ func TestPublicationElasticConfig(t *testing.T) {
 	assert.Contains(t, queryStr, "\"publicationType\":\"Type A\"")
 	assert.Contains(t, queryStr, "\"lte\":\"2021\"")
 	assert.Contains(t, queryStr, "\"gte\":\"2020\"")
-	
+
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, pubConfig, "aggs")
 	aggsClause := pubConfig["aggs"].(gin.H)
@@ -528,7 +551,7 @@ func TestDataProviderElasticConfig(t *testing.T) {
 
 	// assert specific filter keys are included
 	assert.Contains(t, queryStr, "\"geographicLocation\":\"country A\"")
-	
+
 	// assert aggregations clause exists and contains specific keys
 	assert.Contains(t, durConfig, "aggs")
 	aggsClause := durConfig["aggs"].(gin.H)

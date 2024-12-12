@@ -85,14 +85,14 @@ type Hit struct {
 }
 
 type SearchErrorResponse struct {
-	Error	map[string][]RootCause	`json:"error"`
-	Status	int							`json:"status"`
+	Error  map[string][]RootCause `json:"error"`
+	Status int                    `json:"status"`
 }
 
 type RootCause struct {
-	Type 	string `json:"type"`
-	Reason 	string `json:"reason"`
-	Index 	string `json:"index"`
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
+	Index  string `json:"index"`
 }
 
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
@@ -110,6 +110,7 @@ func SearchGeneric(c *gin.Context) {
 	dataUseResults := make(chan SearchResponse)
 	publicationResults := make(chan SearchResponse)
 	dataProviderResults := make(chan SearchResponse)
+	dataCustodianNetworkResults := make(chan SearchResponse)
 
 	results := make(map[string]interface{})
 
@@ -119,8 +120,9 @@ func SearchGeneric(c *gin.Context) {
 	go dataUseChannel(query, dataUseResults)
 	go publicationChannel(query, publicationResults)
 	go dataProviderChannel(query, dataProviderResults)
+	go dataCustodianNetworkChannel(query, dataCustodianNetworkResults)
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 7; i++ {
 		select {
 		case datasets := <-datasetResults:
 			results["dataset"] = datasets
@@ -134,6 +136,8 @@ func SearchGeneric(c *gin.Context) {
 			results["publication"] = publications
 		case dataProviders := <-dataProviderResults:
 			results["dataProvider"] = dataProviders
+		case dataCustodianNetworks := <-dataCustodianNetworkResults:
+			results["datacustodiannetwork"] = dataCustodianNetworks
 		}
 	}
 
@@ -207,9 +211,9 @@ func datasetSearch(query Query) SearchResponse {
 		rootCause := elasticError.Error["root_cause"][0]
 		if rootCause.Reason != "" {
 			slog.Warn(
-				fmt.Sprintf("Search query returned elastic error: %s", 
-				rootCause.Reason,
-			))
+				fmt.Sprintf("Search query returned elastic error: %s",
+					rootCause.Reason,
+				))
 		} else {
 			slog.Warn(fmt.Sprint(
 				"Hits from elastic are null, query may be malformed",
@@ -1075,6 +1079,10 @@ func dataProviderElasticConfig(query Query) gin.H {
 			"name",
 			"datasetTitles",
 			"geographicLocation",
+			"publicationTitles",
+			"collectionNames",
+			"durTitles",
+			"toolNames",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
@@ -1130,6 +1138,169 @@ func dataProviderElasticConfig(query Query) gin.H {
 	return gin.H{
 		"size":        100,
 		"query":       mainQuery,
+		"explain":     true,
+		"post_filter": f1,
+		"aggs":        agg1,
+	}
+}
+
+// DataCustodianNetworkSearch performs a search of the ElasticSearch dataCustodianNetworks index using
+// the provided query as the search term.  Results are returned in the format
+// returned by elastic (SearchResponse).
+func DataCustodianNetworkSearch(c *gin.Context) {
+	var query Query
+	if err := c.BindJSON(&query); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
+		return
+	}
+	results := dataCustodianNetworkSearch(query)
+	c.JSON(http.StatusOK, results)
+}
+
+func dataCustodianNetworkChannel(query Query, res chan SearchResponse) {
+	elasticResp := dataCustodianNetworkSearch(query)
+	res <- elasticResp
+}
+
+// dataCustodianNetworkSearch performs a search of the ElasticSearch dataCustodianNetworks index using
+// the provided query as the search term.  Results are returned in the format
+// returned by elastic (SearchResponse).
+func dataCustodianNetworkSearch(query Query) SearchResponse {
+	var buf bytes.Buffer
+
+	elasticQuery := dataCustodianNetworkElasticConfig(query)
+	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticQuery,
+			err.Error()),
+		)
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex("datacustodiannetwork"),
+		ElasticClient.Search.WithBody(&buf),
+	)
+
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
+	}
+
+	var elasticResp SearchResponse
+	json.Unmarshal(body, &elasticResp)
+
+	if elasticResp.Hits.Hits == nil {
+		slog.Warn(fmt.Sprintf(
+			"Hits from elastic are null, query may be malformed",
+		))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+	}
+
+	stripExplanation(elasticResp, query, "datacustodiannetwork")
+
+	return elasticResp
+}
+
+// dataCustodianNetworkElasticConfig defines the body of the query to the elastic datacustodiannetwork index
+func dataCustodianNetworkElasticConfig(query Query) gin.H {
+	var mainQuery gin.H
+	if query.QueryString == "" {
+		mainQuery = gin.H{
+			"match_all": gin.H{},
+		}
+	} else {
+		relatedObjectFields := []string{
+			"publisherNames",
+			"datasetTitles",
+			"durTitles",
+			"toolNames",
+			"publicationTitles",
+			"collectionNames",
+		}
+		searchableFields := []string{
+			"name",
+			"summary",
+		}
+		mm1 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    relatedObjectFields,
+				"fuzziness": "AUTO:5,7",
+			},
+		}
+		mm2 := gin.H{
+			"multi_match": gin.H{
+				"query":     query.QueryString,
+				"fields":    searchableFields,
+				"fuzziness": "AUTO:5,7",
+				"boost":     2,
+			},
+		}
+		mm3 := gin.H{
+			"multi_match": gin.H{
+				"query":  query.QueryString,
+				"type":   "phrase",
+				"fields": searchableFields,
+				"boost":  3,
+			},
+		}
+		mainQuery = gin.H{
+			"bool": gin.H{
+				"should": []gin.H{mm1, mm2, mm3},
+			},
+		}
+	}
+
+	mustFilters := []gin.H{}
+	for key, terms := range query.Filters["datacustodiannetwork"] {
+		filters := []gin.H{}
+		for _, t := range terms.([]interface{}) {
+			filters = append(filters, gin.H{"term": gin.H{key: t}})
+		}
+		mustFilters = append(mustFilters, gin.H{
+			"bool": gin.H{
+				"should": filters,
+			},
+		})
+	}
+
+	f1 := gin.H{
+		"bool": gin.H{
+			"must": mustFilters,
+		},
+	}
+
+	agg1 := buildAggregations(query)
+
+	return gin.H{
+		"size":  100,
+		"query": mainQuery,
+		"highlight": gin.H{
+			"fields": gin.H{
+				"name": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size":    0,
+					"no_match_size":    0,
+				},
+				"summary": gin.H{
+					"boundary_scanner": "sentence",
+					"fragment_size":    0,
+					"no_match_size":    0,
+				},
+			},
+		},
 		"explain":     true,
 		"post_filter": f1,
 		"aggs":        agg1,
