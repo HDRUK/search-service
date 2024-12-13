@@ -670,6 +670,176 @@ func DefineDataProviderMappings(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// DefineDataCustodianNetworkSettings updates the settings of the dataCustodianNetworks index in elastic to use
+// a custom similarity scoring algorithm. The mappings of the DataCustodianNetwork index are
+// updated so that the custom similarity algorithm is applied to the description
+// field of the DataCustodianNetwork data.
+func DefineDataCustodianNetworkSettings(c *gin.Context) {
+	// Elastic requires the index to be closed before settings are updated
+	closeIndexByName("datacustodiannetwork")
+
+	var buf bytes.Buffer
+	elasticSettings := gin.H{
+		"settings": gin.H{
+			"index": gin.H{
+				"similarity": gin.H{
+					"custom_similarity": gin.H{
+						"type": "BM25",
+						"b":    0.1,
+					},
+				},
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(elasticSettings); err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticSettings,
+			err.Error()),
+		)
+	}
+
+	request := esapi.IndicesPutSettingsRequest{
+		Index: []string{"datacustodiannetwork"},
+		Body:  &buf,
+	}
+	response, err := request.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		pubSubAudit(
+			"update settings",
+			"datacustodiannetwork",
+			fmt.Sprintf("datacustodiannetwork settings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(body, &resp)
+
+	var mappings bytes.Buffer
+	elasticMappings := gin.H{
+		"properties": gin.H{
+			"description": gin.H{
+				"type":       "text",
+				"similarity": "custom_similarity",
+			},
+		},
+	}
+	if err := json.NewEncoder(&mappings).Encode(elasticMappings); err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
+	}
+
+	mappingsRequest := esapi.IndicesPutMappingRequest{
+		Index: []string{"datacustodiannetwork"},
+		Body:  &mappings,
+	}
+	mappingsResponse, err := mappingsRequest.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		pubSubAudit(
+			"update mappings",
+			"datacustodiannetwork",
+			fmt.Sprintf("datacustodiannetwork mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
+		c.JSON(mappingsResponse.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer mappingsResponse.Body.Close()
+	mappingsBody, err := io.ReadAll(mappingsResponse.Body)
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
+	}
+	var mappingResp map[string]interface{}
+	json.Unmarshal(mappingsBody, &mappingResp)
+
+	// Reopen the index
+	openIndexByName("datacustodiannetwork")
+
+	pubSubAudit("update settings", "datacustodiannetwork", "datacustodiannetwork settings sucessfully updated")
+
+	c.JSON(http.StatusOK, gin.H{"acknowledged": true})
+}
+
+// DefineDataCustodianNetworkMappings initialises the DataCustodianNetwork index and defines the custom
+// requires reindexing.
+func DefineDataCustodianNetworkMappings(c *gin.Context) {
+	var buf bytes.Buffer
+	elasticMappings := gin.H{
+		"mappings": gin.H{
+			"properties": gin.H{
+				"publisherNames":    gin.H{"type": "keyword"},
+				"datasetTitles":     gin.H{"type": "keyword"},
+				"durTitles":         gin.H{"type": "keyword"},
+				"toolNames":         gin.H{"type": "keyword"},
+				"publicationTitles": gin.H{"type": "keyword"},
+				"collectionNames":   gin.H{"type": "keyword"},
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(elasticMappings); err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic query %s with %s",
+			elasticMappings,
+			err.Error()),
+		)
+	}
+
+	request := esapi.IndicesCreateRequest{
+		Index: "datacustodiannetwork",
+		Body:  &buf,
+	}
+	response, err := request.Do(context.TODO(), ElasticClient)
+	if err != nil {
+		pubSubAudit(
+			"update mappings",
+			"datacustodiannetwork",
+			fmt.Sprintf("datacustodiannetwork mappings failed to update with error: %s", err.Error()),
+		)
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
+		c.JSON(response.StatusCode, gin.H{"message": err.Error()})
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(body, &resp)
+
+	pubSubAudit("update mappings", "datacustodiannetwork", "datacustodiannetwork mappings sucessfully updated")
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // closeIndexByName closes the elastic index matching the provided name.
 func closeIndexByName(indexName string) {
 	closeIndexRequest := esapi.IndicesCloseRequest{
