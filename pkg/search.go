@@ -232,7 +232,12 @@ func datasetElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -429,7 +434,12 @@ func toolsElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -586,7 +596,12 @@ func collectionsElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		relatedObjectFields := []string{
@@ -748,7 +763,12 @@ func dataUseElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -902,7 +922,12 @@ func publicationElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -1072,7 +1097,12 @@ func dataProviderElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -1218,7 +1248,12 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		relatedObjectFields := []string{
