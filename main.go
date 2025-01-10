@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
@@ -27,6 +31,26 @@ func main() {
 	search.DefineElasticClient()
 
 	router := gin.Default()
+
+	allowCredentials, err := strconv.ParseBool(os.Getenv("CORS_ALLOW_CREDENTIALS"))
+	if err != nil {
+		fmt.Println("unable to determine \"CORS_ALLOW_CREDENTIALS\" value")
+	}
+	maxAge, err := strconv.Atoi(os.Getenv("CORS_MAX_AGE"))
+	if err != nil {
+		fmt.Println("unable to determine \"CORS_MAX_AGE\" value")
+	}
+
+	// Implement CORS into gin server
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     configFromEnv("CORS_ALLOW_ORIGINS"),
+		AllowMethods:     configFromEnv("CORS_ALLOW_METHODS"),
+		AllowHeaders:     configFromEnv("CORS_ALLOW_HEADERS"),
+		ExposeHeaders:    configFromEnv("CORS_EXPOSE_HEADERS"),
+		AllowCredentials: allowCredentials,
+		MaxAge:           time.Duration(maxAge) * time.Hour,
+	}))
+
 	// Define generic search endpoint, searches across all available entities
 	router.POST("/search", search.SearchGeneric)
 	router.POST("/search/datasets", search.DatasetSearch)
@@ -57,4 +81,21 @@ func main() {
 	router.POST("/search/federated_papers/field_search/array", search.ArrayFieldSearch)
 
 	router.Run(os.Getenv("SEARCHSERVICE_HOST"))
+}
+
+// configFromEnv - Pulls in and translates comma delimited strings from env file
+// to set as CORS config
+func configFromEnv(envName string) []string {
+	var retVal []string
+	value := os.Getenv(envName)
+
+	if strings.Contains(",", value) {
+		retVal = strings.Split(value, ",")
+	} else {
+		retVal = []string{value}
+	}
+
+	fmt.Printf("configuring router cors \"%s\" to: %+v\n", envName, retVal)
+
+	return retVal
 }
