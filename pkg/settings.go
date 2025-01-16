@@ -509,6 +509,7 @@ func DefineDataUseMappings(c *gin.Context) {
 				"sector":           gin.H{"type": "keyword"},
 				"organisationName": gin.H{"type": "keyword"},
 				"datasetTitles":    gin.H{"type": "keyword"},
+				"collectionNames":  gin.H{"type": "keyword"},
 			},
 		},
 	}
