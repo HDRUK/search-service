@@ -779,6 +779,7 @@ func dataUseElasticConfig(query Query) gin.H {
 			"fundersAndSponsors",
 			"datasetTitles",
 			"keywords",
+			"collectionNames",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
