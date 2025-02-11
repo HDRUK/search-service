@@ -55,6 +55,7 @@ type Query struct {
 	QueryString  string                            `json:"query"`
 	Filters      map[string]map[string]interface{} `json:"filters"`
 	Aggregations []map[string]interface{}          `json:"aggs"`
+	IDs          []string                          `json:"ids"`
 }
 
 type SimilarSearch struct {
@@ -175,6 +176,13 @@ func datasetSearch(query Query) SearchResponse {
 		)
 	}
 
+	prettyJSON, err := json.MarshalIndent(elasticQuery, "", " ")
+	if err != nil {
+		log.Fatalf("Error marshaling JSON: %v", err)
+	}
+
+	fmt.Println(string(prettyJSON))
+
 	response, err := ElasticClient.Search(
 		ElasticClient.Search.WithIndex("dataset"),
 		ElasticClient.Search.WithBody(&buf),
@@ -228,9 +236,55 @@ func datasetSearch(query Query) SearchResponse {
 // datasetElasticConfig defines the body of the query to the elastic datasets index
 func datasetElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
+				},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		searchableFields := []string{
@@ -333,16 +387,9 @@ func datasetElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
+	response := gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
 		"highlight": gin.H{
 			"fields": gin.H{
 				"description": gin.H{
@@ -361,6 +408,13 @@ func datasetElasticConfig(query Query) gin.H {
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
+
 }
 
 func ToolSearch(c *gin.Context) {
@@ -432,7 +486,12 @@ func toolsElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -496,14 +555,7 @@ func toolsElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS"),
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -594,7 +646,12 @@ func collectionsElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		relatedObjectFields := []string{
@@ -658,14 +715,7 @@ func collectionsElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS"),
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -761,7 +811,12 @@ func dataUseElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -826,14 +881,7 @@ func dataUseElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS"),
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -921,7 +969,12 @@ func publicationElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -997,14 +1050,7 @@ func publicationElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS"),
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -1096,7 +1142,12 @@ func dataProviderElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		searchableFields := []string{
@@ -1160,14 +1211,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS"),
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
+		"size":        os.Getenv("SEARCH_NO_RECORDS"),
 		"query":       mainQuery,
 		"explain":     true,
 		"post_filter": f1,
@@ -1247,7 +1291,12 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	if query.QueryString == "" {
 		mainQuery = gin.H{
-			"match_all": gin.H{},
+			"function_score": gin.H{
+				"query": gin.H{
+					"match_all": gin.H{},
+				},
+				"random_score": gin.H{},
+			},
 		}
 	} else {
 		relatedObjectFields := []string{
@@ -1314,14 +1363,7 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS"),
-		"sort": []gin.H{
-			{
-				"_id": gin.H{
-					"order": "desc", // Sorting in descending order
-				},
-			},
-		},
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
