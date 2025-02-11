@@ -55,6 +55,7 @@ type Query struct {
 	QueryString  string                            `json:"query"`
 	Filters      map[string]map[string]interface{} `json:"filters"`
 	Aggregations []map[string]interface{}          `json:"aggs"`
+	IDs          []string                          `json:"ids"`
 }
 
 type SimilarSearch struct {
@@ -215,9 +216,7 @@ func datasetSearch(query Query) SearchResponse {
 					rootCause.Reason,
 				))
 		} else {
-			slog.Warn(fmt.Sprint(
-				"Hits from elastic are null, query may be malformed",
-			))
+			slog.Warn("Hits from elastic are null, query may be malformed")
 		}
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
@@ -230,14 +229,55 @@ func datasetSearch(query Query) SearchResponse {
 // datasetElasticConfig defines the body of the query to the elastic datasets index
 func datasetElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
 				},
-				"random_score": gin.H{},
-			},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		searchableFields := []string{
@@ -340,8 +380,8 @@ func datasetElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
-		"size":  100,
+	response := gin.H{
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -361,6 +401,13 @@ func datasetElasticConfig(query Query) gin.H {
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
+
 }
 
 func ToolSearch(c *gin.Context) {
@@ -418,9 +465,7 @@ func toolSearch(query Query) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -432,14 +477,55 @@ func toolSearch(query Query) SearchResponse {
 // toolsElasticConfig defines the body of the query to the elastic tools index
 func toolsElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
 				},
-				"random_score": gin.H{},
-			},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		searchableFields := []string{
@@ -502,8 +588,8 @@ func toolsElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
-		"size":  100,
+	response := gin.H{
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -523,6 +609,12 @@ func toolsElasticConfig(query Query) gin.H {
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
 }
 
 func CollectionSearch(c *gin.Context) {
@@ -580,9 +672,7 @@ func collectionSearch(query Query) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -594,14 +684,55 @@ func collectionSearch(query Query) SearchResponse {
 // collectionsElasticConfig defines the body of the query to the elastic collections index
 func collectionsElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
 				},
-				"random_score": gin.H{},
-			},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		relatedObjectFields := []string{
@@ -664,8 +795,8 @@ func collectionsElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
-		"size":  100,
+	response := gin.H{
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -690,6 +821,12 @@ func collectionsElasticConfig(query Query) gin.H {
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
 }
 
 func DataUseSearch(c *gin.Context) {
@@ -747,9 +884,7 @@ func dataUseSearch(query Query) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -761,14 +896,55 @@ func dataUseSearch(query Query) SearchResponse {
 // dataUseElasticConfig defines the body of the query to the elastic data uses index
 func dataUseElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
 				},
-				"random_score": gin.H{},
-			},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		searchableFields := []string{
@@ -832,8 +1008,8 @@ func dataUseElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
-		"size":  100,
+	response := gin.H{
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -848,6 +1024,12 @@ func dataUseElasticConfig(query Query) gin.H {
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
 }
 
 func PublicationSearch(c *gin.Context) {
@@ -907,9 +1089,7 @@ func publicationSearch(query Query) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -921,14 +1101,55 @@ func publicationSearch(query Query) SearchResponse {
 // publicationElasticConfig defines the body of the query to the elastic publications index
 func publicationElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
 				},
-				"random_score": gin.H{},
-			},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		searchableFields := []string{
@@ -1003,8 +1224,8 @@ func publicationElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
-		"size":  100,
+	response := gin.H{
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -1024,6 +1245,12 @@ func publicationElasticConfig(query Query) gin.H {
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
 }
 
 func DataProviderSearch(c *gin.Context) {
@@ -1082,9 +1309,7 @@ func dataProviderSearch(query Query) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -1096,14 +1321,55 @@ func dataProviderSearch(query Query) SearchResponse {
 // dataProviderElasticConfig defines the body of the query to the elastic data providers index
 func dataProviderElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
+	var sortQuery []gin.H
+
 	if query.QueryString == "" {
-		mainQuery = gin.H{
-			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
+		if len(query.IDs) == 0 {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"match_all": gin.H{},
+					},
+					"random_score": gin.H{},
 				},
-				"random_score": gin.H{},
-			},
+			}
+		} else {
+			mainQuery = gin.H{
+				"function_score": gin.H{
+					"query": gin.H{
+						"function_score": gin.H{
+							"query": gin.H{
+								"bool": gin.H{
+									"filter": []gin.H{
+										{
+											"terms": gin.H{
+												"_id": query.IDs,
+											},
+										},
+									},
+								},
+							},
+							"random_score": gin.H{},
+						},
+					},
+				},
+			}
+
+			sortQuery = []gin.H{
+				{
+					"_script": gin.H{
+						"type": "number",
+						"script": gin.H{
+							"lang":   "painless",
+							"source": "params.order.indexOf(doc['_id'].value)",
+							"params": gin.H{
+								"order": query.IDs,
+							},
+						},
+						"order": "asc",
+					},
+				},
+			}
 		}
 	} else {
 		searchableFields := []string{
@@ -1166,13 +1432,19 @@ func dataProviderElasticConfig(query Query) gin.H {
 
 	agg1 := buildAggregations(query)
 
-	return gin.H{
-		"size":        100,
+	response := gin.H{
+		"size":        os.Getenv("SEARCH_NO_RECORDS"),
 		"query":       mainQuery,
 		"explain":     true,
 		"post_filter": f1,
 		"aggs":        agg1,
 	}
+
+	if len(query.IDs) > 0 {
+		response["sort"] = sortQuery
+	}
+
+	return response
 }
 
 // DataCustodianNetworkSearch performs a search of the ElasticSearch dataCustodianNetworks index using
@@ -1233,9 +1505,7 @@ func dataCustodianNetworkSearch(query Query) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
@@ -1321,7 +1591,7 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 	agg1 := buildAggregations(query)
 
 	return gin.H{
-		"size":  100,
+		"size":  os.Getenv("SEARCH_NO_RECORDS"),
 		"query": mainQuery,
 		"highlight": gin.H{
 			"fields": gin.H{
@@ -1365,7 +1635,7 @@ func buildAggregations(query Query) gin.H {
 				"range": gin.H{"field": k, "ranges": ranges},
 			}
 		} else {
-			agg1[k] = gin.H{"terms": gin.H{"field": k, "size": 1000}}
+			agg1[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
 		}
 	}
 	return agg1
@@ -1458,7 +1728,7 @@ func similarSearch(id string, index string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := gin.H{
-		"size": 3,
+		"size": os.Getenv("SEARCH_NO_RECORDS_SIMILAR_SEARCH"),
 		"query": gin.H{
 			"more_like_this": gin.H{
 				"like": []gin.H{
@@ -1501,9 +1771,7 @@ func similarSearch(id string, index string) SearchResponse {
 	json.Unmarshal(body, &elasticResp)
 
 	if elasticResp.Hits.Hits == nil {
-		slog.Warn(fmt.Sprintf(
-			"Hits from elastic are null, query may be malformed",
-		))
+		slog.Warn("Hits from elastic are null, query may be malformed")
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
