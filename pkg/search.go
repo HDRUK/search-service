@@ -176,13 +176,6 @@ func datasetSearch(query Query) SearchResponse {
 		)
 	}
 
-	prettyJSON, err := json.MarshalIndent(elasticQuery, "", " ")
-	if err != nil {
-		log.Fatalf("Error marshaling JSON: %v", err)
-	}
-
-	fmt.Println(string(prettyJSON))
-
 	response, err := ElasticClient.Search(
 		ElasticClient.Search.WithIndex("dataset"),
 		ElasticClient.Search.WithBody(&buf),
