@@ -110,6 +110,7 @@ func DefineDatasetMappings(c *gin.Context) {
 				"sampleAvailability": gin.H{"type": "keyword"},
 				"dataType":           gin.H{"type": "keyword"},
 				"dataSubType":        gin.H{"type": "keyword"},
+				"formatAndStandards": gin.H{"type": "keyword"},
 			},
 		},
 	}

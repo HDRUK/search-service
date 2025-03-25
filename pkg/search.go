@@ -956,6 +956,7 @@ func dataUseElasticConfig(query Query) gin.H {
 			"datasetTitles",
 			"keywords",
 			"collectionNames",
+			"publisherName",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
@@ -1265,7 +1266,7 @@ func DataProviderSearch(c *gin.Context) {
 }
 
 func dataProviderChannel(query Query, res chan SearchResponse) {
-	elasticResp := datasetSearch(query)
+	elasticResp := dataProviderSearch(query)
 	res <- elasticResp
 }
 
