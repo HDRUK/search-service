@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
@@ -222,6 +223,9 @@ func datasetSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "dataset")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -378,7 +382,7 @@ func datasetElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
@@ -586,7 +590,7 @@ func toolsElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
@@ -793,7 +797,7 @@ func collectionsElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
@@ -1007,7 +1011,7 @@ func dataUseElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
@@ -1223,7 +1227,7 @@ func publicationElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
@@ -1431,7 +1435,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
 		"size":        os.Getenv("SEARCH_NO_RECORDS"),
@@ -1589,7 +1593,7 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 		},
 	}
 
-	agg1 := buildAggregations(query)
+	agg1 := buildAggregations(query, mustFilters)
 
 	return gin.H{
 		"size":  os.Getenv("SEARCH_NO_RECORDS"),
@@ -1617,30 +1621,51 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 // buildAggregations constructs the "aggs" part of an elastic search query
 // from provided Aggregations.
 // Aggregations are expected to be an array of `{'type': string, 'keys': string}`
-func buildAggregations(query Query) gin.H {
+func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 	agg1 := gin.H{}
 	for _, agg := range query.Aggregations {
 		k, ok := agg["keys"].(string)
 		if !ok {
 			log.Printf("Filter key in %s not recognised", agg)
 		}
+		aggInner := gin.H{}
+		filters := []gin.H{}
 		if k == "dateRange" {
-			agg1["startDate"] = gin.H{"min": gin.H{"field": "startDate"}}
-			agg1["endDate"] = gin.H{"max": gin.H{"field": "endDate"}}
+			aggInner["startDate"] = gin.H{"min": gin.H{"field": "startDate"}}
+			aggInner["endDate"] = gin.H{"max": gin.H{"field": "endDate"}}
 		} else if k == "publicationDate" {
-			agg1["startDate"] = gin.H{"min": gin.H{"field": "publicationDate"}}
-			agg1["endDate"] = gin.H{"max": gin.H{"field": "publicationDate"}}
+			aggInner["startDate"] = gin.H{"min": gin.H{"field": "publicationDate"}}
+			aggInner["endDate"] = gin.H{"max": gin.H{"field": "publicationDate"}}
 		} else if k == "populationSize" {
 			ranges := populationRanges()
-			agg1[k] = gin.H{
+			aggInner[k] = gin.H{
 				"range": gin.H{"field": k, "ranges": ranges},
 			}
 		} else {
-			agg1[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
+			aggInner[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
+		}
+
+		for _, fil := range mustFilters {
+			filJson, err := json.Marshal(fil)
+			if err != nil {
+				slog.Info("Could not marshal filter")
+			}
+			filStr := string(filJson)
+			if (strings.Contains(filStr, k)) {
+				continue
+			} else {
+				filters = append(filters, fil)
+			}
+		}
+
+		agg1[k] = gin.H{
+			"aggs": aggInner, 
+			"filter": gin.H{"bool": gin.H{"must": filters}},
 		}
 	}
 	return agg1
 }
+
 func populationRanges() []gin.H {
 	var ranges []gin.H
 	ranges = append(ranges, gin.H{"from": -1.0, "to": 1.0, "key": "Unreported"})
@@ -1648,6 +1673,16 @@ func populationRanges() []gin.H {
 		ranges = append(ranges, gin.H{"from": math.Pow(10, float64(i)), "to": math.Pow(10, float64(i+1))})
 	}
 	return ranges
+}
+
+func flattenAggs(elasticResp SearchResponse) map[string]any {
+	newAggs := make(map[string]any)
+
+	for k, agg := range elasticResp.Aggregations {
+		newAggs[k] = agg.(map[string]any)[k]
+	}
+
+	return newAggs
 }
 
 // Remove the explanations from a SearchResponse to reduce its size
