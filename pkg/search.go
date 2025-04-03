@@ -177,6 +177,9 @@ func datasetSearch(query Query) SearchResponse {
 		)
 	}
 
+	s, _ := json.MarshalIndent(elasticQuery, "", "    ")
+	fmt.Println(string(s))
+
 	response, err := ElasticClient.Search(
 		ElasticClient.Search.WithIndex("dataset"),
 		ElasticClient.Search.WithBody(&buf),
@@ -223,9 +226,9 @@ func datasetSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "dataset")
-	newAggs := flattenAggs(elasticResp)
+	// newAggs := flattenAggs(elasticResp)
 
-	elasticResp.Aggregations = newAggs
+	// elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -1641,6 +1644,31 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 			aggInner[k] = gin.H{
 				"range": gin.H{"field": k, "ranges": ranges},
 			}
+		} else if k == "dataType" {
+			aggInner[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
+			dataTypes := getDatasetTypes()
+
+			for _, dt := range dataTypes {
+				aggName := fmt.Sprintf("dataType_%s", dt)
+				subTypeAgg := gin.H{
+					"aggs": gin.H{
+						dt: gin.H{
+							"terms": gin.H{
+								"field": "dataSubType",
+								"size":  os.Getenv("SEARCH_NO_RECORDS_AGGREGATION"),
+							},
+						},
+					},
+					"filter": gin.H{
+						"bool": gin.H{
+							"must": []map[string]any{
+								{"term": gin.H{"dataType": dt}},
+							},
+						},
+					},
+				}
+				aggInner[aggName] = subTypeAgg
+			}
 		} else {
 			aggInner[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
 		}
@@ -1683,6 +1711,62 @@ func flattenAggs(elasticResp SearchResponse) map[string]any {
 	}
 
 	return newAggs
+}
+
+func getDatasetTypes() []string {
+	var buf bytes.Buffer
+
+	aggsQuery := gin.H{
+		"aggs": gin.H{
+			"dataType": gin.H{
+				"terms": gin.H{
+					"field": "dataType",
+					"size": "1000",
+				},
+			},
+		},
+		"size": "0",
+	}
+	if err := json.NewEncoder(&buf).Encode(aggsQuery); err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to encode elastic config %s with %s",
+			aggsQuery,
+			err.Error()),
+		)
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithIndex("dataset"),
+		ElasticClient.Search.WithBody(&buf),
+	)
+
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to execute elastic query with %s",
+			err.Error()),
+		)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		slog.Debug(fmt.Sprintf(
+			"Failed to read elastic response with %s",
+			err.Error()),
+		)
+	}
+
+	var elasticResp SearchResponse
+	json.Unmarshal(body, &elasticResp)
+
+	var dataTypes []string
+	buckets := elasticResp.Aggregations["dataType"].(map[string]any)["buckets"].([]any)
+
+	for _, bucket := range buckets {
+		dataTypes = append(dataTypes, bucket.(map[string]any)["key"].(string))
+	}
+
+	return dataTypes
 }
 
 // Remove the explanations from a SearchResponse to reduce its size
