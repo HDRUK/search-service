@@ -1645,7 +1645,7 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 				"range": gin.H{"field": k, "ranges": ranges},
 			}
 		} else if k == "dataType" {
-			aggInner[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
+			aggInner[k] = gin.H{"terms": gin.H{"field": "dataTypeNest.dataType.keyword", "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
 			dataTypes := getDatasetTypes()
 
 			for _, dt := range dataTypes {
@@ -1654,7 +1654,7 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 					"aggs": gin.H{
 						dt: gin.H{
 							"terms": gin.H{
-								"field": "dataSubType",
+								"field": fmt.Sprintf("dataTypeNest.%s.keyword", dt),
 								"size":  os.Getenv("SEARCH_NO_RECORDS_AGGREGATION"),
 							},
 						},
@@ -1662,7 +1662,7 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 					"filter": gin.H{
 						"bool": gin.H{
 							"must": []map[string]any{
-								{"term": gin.H{"dataType": dt}},
+								{"term": gin.H{"dataTypeNest.dataType.keyword": dt}},
 							},
 						},
 					},
@@ -1720,7 +1720,7 @@ func getDatasetTypes() []string {
 		"aggs": gin.H{
 			"dataType": gin.H{
 				"terms": gin.H{
-					"field": "dataType",
+					"field": "dataTypeNest.dataType.keyword",
 					"size": "1000",
 				},
 			},
