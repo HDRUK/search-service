@@ -31,6 +31,9 @@ func DefineDatasetMappings(c *gin.Context) {
 								"lowercase",
 								"english_stemmer",
 							},
+							"char_filter": []string{
+								"punctuation_removal",
+							},
 						},
 						//search analyzer
 						"medterms_search_analyzer": gin.H{
@@ -39,6 +42,9 @@ func DefineDatasetMappings(c *gin.Context) {
 								"lowercase",
 								"medterms_synonyms",
 								"english_stemmer",
+							},
+							"char_filter": []string{
+								"punctuation_removal",
 							},
 						},
 					},
@@ -51,6 +57,13 @@ func DefineDatasetMappings(c *gin.Context) {
 							"type":         "synonym_graph",
 							"synonyms_set": "hdr_synonyms_set",
 							"updateable":   true,
+						},
+					},
+					"char_filter": gin.H{
+						"punctuation_removal": gin.H{
+							"type": "pattern_replace",
+							"pattern": "[^\\w\\s]",
+							"replacement": "",
 						},
 					},
 				},
