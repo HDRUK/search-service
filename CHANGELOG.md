@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/HDRUK/search-service/compare/v1.0.0...v1.0.1) (2025-05-06)
+
+### 🐛 Bug Fixes
+
+* **GAT-6451:** Update analyzers with character filter (#156) ([a868079](https://github.com/HDRUK/search-service/commit/a8680796fc583177ef698fe3c22e04dbe54f1820)), closes [GAT-6451](GAT-6451)
+
 ## 1.0.0 (2025-02-25)
 
 ### ✨ Features
