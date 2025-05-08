@@ -235,7 +235,7 @@ func TestArrayFieldSearch(t *testing.T) {
 
 func TestBuildQueryString(t *testing.T) {
 	query := FieldQuery{
-		QueryString: "A Very Useful Dataset (AVUD)",
+		QueryString: "A Very Useful / Dataset (AVUD)",
 		Field : []string{"TITLE","ABSTRACT","METHODS"},
 		Filters: map[string]map[string]interface{}{
 			"paper": {
@@ -251,6 +251,7 @@ func TestBuildQueryString(t *testing.T) {
 	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
 	assert.Contains(t, queryString, "SRC:PPR")
 	assert.Contains(t, queryString, "PUB_YEAR:[2020%20TO%202021]")
+	assert.NotContains(t, queryString, "/")
 }
 
 func TestBuildDoiQuery(t *testing.T) {
