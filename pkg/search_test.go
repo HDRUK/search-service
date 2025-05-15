@@ -26,6 +26,8 @@ func init() {
 			Body:       r,
 		}, nil
 	}
+
+	BQUpload = func(query Query, results SearchResponse, entityType string) {}
 }
 
 func GetTestGinContext(w *httptest.ResponseRecorder) *gin.Context {
