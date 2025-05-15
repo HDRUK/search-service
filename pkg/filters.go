@@ -96,7 +96,7 @@ func ListFilters(c *gin.Context) {
 		json.Unmarshal(body, &elasticResp)
 
 		if (len(elasticResp.Aggregations) == 0) {
-			slog.Warn(fmt.Sprintf("No aggreations returned for filter: %s - %s", filterType, filterKey))
+			slog.Warn(fmt.Sprintf("No aggregations returned for filter: %s - %s", filterType, filterKey))
 		}
 
 		if (filterKey == "dateRange") || (filterKey == "publicationDate") {
