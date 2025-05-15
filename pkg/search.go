@@ -18,6 +18,7 @@ import (
 	"cloud.google.com/go/bigquery"
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"google.golang.org/api/googleapi"
 
 	bigqueryclient "hdruk/search-service/utils/bigquery"
@@ -106,6 +107,7 @@ type RootCause struct {
 }
 
 type SearchAnalytics struct {
+	UUID             string
 	Timestamp        string
 	EntityType       string
 	SearchTerm       string
@@ -116,6 +118,7 @@ type SearchAnalytics struct {
 
 func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
 	return map[string]bigquery.Value{
+		"UUID":             a.UUID,
 		"Timestamp":        a.Timestamp,
 		"SearchTerm":       a.SearchTerm,
 		"FilterUsed":       a.FilterUsed,
@@ -1822,6 +1825,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	table := analyticsDataset.Table(os.Getenv("BQ_TABLE_NAME"))
 
 	schema := bigquery.Schema{
+		{Name: "UUID", Required: true, Type: bigquery.StringFieldType},
 		{Name: "Timestamp", Required: false, Type: bigquery.DateTimeFieldType},
 		{Name: "EntityType", Required: true, Type: bigquery.StringFieldType},
 		{Name: "SearchTerm", Required: false, Type: bigquery.StringFieldType},
@@ -1858,6 +1862,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	}
 
 	searchResult := SearchAnalytics{
+		UUID:             uuid.New().String(),
 		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
 		EntityType:       entityType,
 		SearchTerm:       query.QueryString,
