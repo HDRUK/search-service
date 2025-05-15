@@ -520,8 +520,11 @@ func TestPublicationElasticConfig(t *testing.T) {
 	assert.Contains(t, pubConfig, "aggs")
 	aggsClause := pubConfig["aggs"].(gin.H)
 	assert.Contains(t, aggsClause, "publicationType")
-	assert.Contains(t, aggsClause, "startDate")
-	assert.Contains(t, aggsClause, "endDate")
+	assert.Contains(t, aggsClause, "publicationDate")
+
+	pubDateClause, _ := json.Marshal(aggsClause["publicationDate"])
+	assert.Contains(t, string(pubDateClause), "startDate")
+	assert.Contains(t, string(pubDateClause), "endDate")
 }
 
 func TestDataProviderElasticConfig(t *testing.T) {

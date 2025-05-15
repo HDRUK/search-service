@@ -507,6 +507,9 @@ func toolSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "tool")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -715,6 +718,9 @@ func collectionSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "collection")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -928,6 +934,9 @@ func dataUseSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "dur")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -1135,6 +1144,9 @@ func publicationSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "publication")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -1356,6 +1368,9 @@ func dataProviderSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "dataProvider")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -1554,6 +1569,9 @@ func dataCustodianNetworkSearch(query Query) SearchResponse {
 	}
 
 	stripExplanation(elasticResp, query, "datacustodiannetwork")
+	newAggs := flattenAggs(elasticResp)
+
+	elasticResp.Aggregations = newAggs
 
 	return elasticResp
 }
@@ -1718,7 +1736,12 @@ func flattenAggs(elasticResp SearchResponse) map[string]any {
 	newAggs := make(map[string]any)
 
 	for k, agg := range elasticResp.Aggregations {
-		newAggs[k] = agg.(map[string]any)[k]
+		if k == "dateRange" || k == "publicationDate" {
+			newAggs["startDate"] = agg.(map[string]any)["startDate"]
+			newAggs["endDate"] = agg.(map[string]any)["endDate"]
+		} else {
+			newAggs[k] = agg.(map[string]any)[k]
+		}
 	}
 
 	return newAggs
