@@ -25,9 +25,9 @@ import (
 )
 
 var (
-	ElasticClient *elasticsearch.Client
+	ElasticClient  *elasticsearch.Client
 	BigQueryClient *bigquery.Client
-	BQUpload = uploadSearchAnalytics
+	BQUpload       = uploadSearchAnalytics
 )
 
 func DefineElasticClient() {
@@ -115,13 +115,13 @@ type SearchAnalytics struct {
 }
 
 func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
-    return map[string]bigquery.Value{
-        "Timestamp":  a.Timestamp,
-        "SearchTerm":  a.SearchTerm,
-		"FilterUsed":  a.FilterUsed,
-		"PageResults":  a.PageResults,
-		"EntitiesReturned":  a.EntitiesReturned,
-    }, "", nil
+	return map[string]bigquery.Value{
+		"Timestamp":        a.Timestamp,
+		"SearchTerm":       a.SearchTerm,
+		"FilterUsed":       a.FilterUsed,
+		"PageResults":      a.PageResults,
+		"EntitiesReturned": a.EntitiesReturned,
+	}, "", nil
 }
 
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
@@ -1815,7 +1815,7 @@ func similarSearch(id string, index string) SearchResponse {
 	return elasticResp
 }
 
-func uploadSearchAnalytics(query Query, results SearchResponse, entityType string) {	
+func uploadSearchAnalytics(query Query, results SearchResponse, entityType string) {
 
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
@@ -1836,7 +1836,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 			if e.Code == 409 {
 				slog.Debug(fmt.Sprintf("%s", err.Error()))
 			}
-	  	} else {
+		} else {
 			slog.Info(fmt.Sprintf("Could not create table: %s", err.Error()))
 		}
 	}
@@ -1858,14 +1858,14 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	}
 
 	searchResult := SearchAnalytics{
-		Timestamp:  time.Now().Format("2006-01-02 15:04:05"),
-		EntityType: entityType,
-        SearchTerm:  query.QueryString,
-		FilterUsed:  string(filterUsed),
-		PageResults:  string(pageResults),
-		EntitiesReturned:  int(results.Hits.Total["value"].(float64)),
+		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
+		EntityType:       entityType,
+		SearchTerm:       query.QueryString,
+		FilterUsed:       string(filterUsed),
+		PageResults:      string(pageResults),
+		EntitiesReturned: int(results.Hits.Total["value"].(float64)),
 	}
-	
+
 	if err := u.Put(ctx, searchResult); err != nil {
 		slog.Info(fmt.Sprintf("Failed to upload search analytics to BigQuery: %s", err.Error()))
 	}
