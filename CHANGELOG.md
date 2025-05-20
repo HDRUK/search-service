@@ -1,3 +1,11 @@
+## [1.1.0](https://github.com/HDRUK/search-service/compare/v1.0.1...v1.1.0) (2025-05-20)
+
+### ✨ Features
+
+* **GAT-6380:** Sanitise dataset name and tidy up query string in fed pub search (#158) ([f8de10a](https://github.com/HDRUK/search-service/commit/f8de10a5b68341c5631735136f41fbbd6d339735)), closes [GAT-6380](GAT-6380)
+* **GAT-6872:** Add big query upload function for search analysis data (#160) ([7524d5d](https://github.com/HDRUK/search-service/commit/7524d5d6b1074796c63f10ab30702689bbc14400)), closes [GAT-6872](GAT-6872)
+* **GAT-6925:** Enable use of aliases for Data Custodian names (#159) ([a2974f4](https://github.com/HDRUK/search-service/commit/a2974f4ecd06d316132bb8c195a9ee00b0bd268e)), closes [GAT-6925](GAT-6925)
+
 ## [1.0.1](https://github.com/HDRUK/search-service/compare/v1.0.0...v1.0.1) (2025-05-06)
 
 ### 🐛 Bug Fixes
