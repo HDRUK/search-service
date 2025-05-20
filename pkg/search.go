@@ -2,7 +2,9 @@ package search
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,19 +13,27 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"time"
 
+	"cloud.google.com/go/bigquery"
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"google.golang.org/api/googleapi"
 
+	bigqueryclient "hdruk/search-service/utils/bigquery"
 	"hdruk/search-service/utils/elastic"
 )
 
 var (
-	ElasticClient *elasticsearch.Client
+	ElasticClient  *elasticsearch.Client
+	BigQueryClient *bigquery.Client
+	BQUpload       = uploadSearchAnalytics
 )
 
 func DefineElasticClient() {
 	ElasticClient = elastic.DefaultClient()
+	BigQueryClient = bigqueryclient.DefaultBigQueryClient()
 }
 
 /*
@@ -96,6 +106,27 @@ type RootCause struct {
 	Index  string `json:"index"`
 }
 
+type SearchAnalytics struct {
+	UUID             string
+	Timestamp        string
+	EntityType       string
+	SearchTerm       string
+	FilterUsed       string
+	PageResults      string
+	EntitiesReturned int
+}
+
+func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
+	return map[string]bigquery.Value{
+		"UUID":             a.UUID,
+		"Timestamp":        a.Timestamp,
+		"SearchTerm":       a.SearchTerm,
+		"FilterUsed":       a.FilterUsed,
+		"PageResults":      a.PageResults,
+		"EntitiesReturned": a.EntitiesReturned,
+	}, "", nil
+}
+
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
 // tools and collections, using the query supplied in the gin.Context.
 // Search results are returned grouped by entity type.
@@ -153,6 +184,7 @@ func DatasetSearch(c *gin.Context) {
 	}
 
 	results := datasetSearch(query)
+	BQUpload(query, results, "dataset")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -417,6 +449,7 @@ func ToolSearch(c *gin.Context) {
 		return
 	}
 	results := toolSearch(query)
+	BQUpload(query, results, "tool")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -624,6 +657,7 @@ func CollectionSearch(c *gin.Context) {
 		return
 	}
 	results := collectionSearch(query)
+	BQUpload(query, results, "collection")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -836,6 +870,7 @@ func DataUseSearch(c *gin.Context) {
 		return
 	}
 	results := dataUseSearch(query)
+	BQUpload(query, results, "datauseregister")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1040,6 +1075,7 @@ func PublicationSearch(c *gin.Context) {
 		return
 	}
 	results := publicationSearch(query)
+	BQUpload(query, results, "publication")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1262,6 +1298,7 @@ func DataProviderSearch(c *gin.Context) {
 	}
 
 	results := dataProviderSearch(query)
+	BQUpload(query, results, "dataprovider")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1381,6 +1418,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 			"collectionNames",
 			"durTitles",
 			"toolNames",
+			"teamAliases",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
@@ -1458,6 +1496,7 @@ func DataCustodianNetworkSearch(c *gin.Context) {
 		return
 	}
 	results := dataCustodianNetworkSearch(query)
+	BQUpload(query, results, "datacustodiannetwork")
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1777,4 +1816,62 @@ func similarSearch(id string, index string) SearchResponse {
 	}
 
 	return elasticResp
+}
+
+func uploadSearchAnalytics(query Query, results SearchResponse, entityType string) {
+
+	ctx := context.Background()
+	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
+	table := analyticsDataset.Table(os.Getenv("BQ_TABLE_NAME"))
+
+	schema := bigquery.Schema{
+		{Name: "UUID", Required: true, Type: bigquery.StringFieldType},
+		{Name: "Timestamp", Required: false, Type: bigquery.DateTimeFieldType},
+		{Name: "EntityType", Required: true, Type: bigquery.StringFieldType},
+		{Name: "SearchTerm", Required: false, Type: bigquery.StringFieldType},
+		{Name: "FilterUsed", Repeated: false, Type: bigquery.JSONFieldType},
+		{Name: "PageResults", Required: false, Type: bigquery.JSONFieldType},
+		{Name: "EntitiesReturned", Required: true, Type: bigquery.IntegerFieldType},
+	}
+
+	if err := table.Create(ctx, &bigquery.TableMetadata{Schema: schema}); err != nil {
+		var e *googleapi.Error
+		if errors.As(err, &e) {
+			if e.Code == 409 {
+				slog.Debug(fmt.Sprintf("%s", err.Error()))
+			}
+		} else {
+			slog.Info(fmt.Sprintf("Could not create table: %s", err.Error()))
+		}
+	}
+
+	u := table.Inserter()
+
+	var datasetIds []string
+	for _, r := range results.Hits.Hits {
+		datasetIds = append(datasetIds, r.Id)
+	}
+	pageResults, err := json.Marshal(gin.H{"entity_ids": datasetIds})
+	if err != nil {
+		slog.Info(fmt.Sprintf("Could not marshal page results: %s", err.Error()))
+	}
+
+	filterUsed, err := json.Marshal(query.Filters)
+	if err != nil {
+		slog.Info(fmt.Sprintf("Could not marshal filters: %s", err.Error()))
+	}
+
+	searchResult := SearchAnalytics{
+		UUID:             uuid.New().String(),
+		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
+		EntityType:       entityType,
+		SearchTerm:       query.QueryString,
+		FilterUsed:       string(filterUsed),
+		PageResults:      string(pageResults),
+		EntitiesReturned: int(results.Hits.Total["value"].(float64)),
+	}
+
+	if err := u.Put(ctx, searchResult); err != nil {
+		slog.Info(fmt.Sprintf("Failed to upload search analytics to BigQuery: %s", err.Error()))
+	}
 }

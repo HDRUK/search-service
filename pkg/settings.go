@@ -61,8 +61,8 @@ func DefineDatasetMappings(c *gin.Context) {
 					},
 					"char_filter": gin.H{
 						"punctuation_removal": gin.H{
-							"type": "pattern_replace",
-							"pattern": "[^\\w\\s]",
+							"type":        "pattern_replace",
+							"pattern":     "[^\\w\\s]",
 							"replacement": "",
 						},
 					},

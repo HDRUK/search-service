@@ -253,23 +253,27 @@ func buildDoiQuery(query Query) string {
 }
 
 func buildQueryString(query FieldQuery) string {
-	queryString := "query=("
-	queryFormatted := strings.Replace(query.QueryString, " ", "%20", -1)
+	queryString := "query=(("
+	r := strings.NewReplacer(
+		" ", "%20",
+		"/", "",
+	)
+	queryFormatted := r.Replace(query.QueryString)
 	for i, fieldString := range(query.Field) {
 		if (i == (len(query.Field) - 1)) {
 			queryString = fmt.Sprintf(
-				"%s%s:%s)%%20AND%%20", queryString, fieldString, queryFormatted,
+				"%s%s:%s))", queryString, fieldString, queryFormatted,
 			)
 		} else {
 			queryString = fmt.Sprintf(
-				"%s%s:%s%%20OR%%20", queryString, fieldString, queryFormatted,
+				"%s%s:%s)%%20OR%%20(", queryString, fieldString, queryFormatted,
 			)
 		}
 	}
 	_, ok := query.Filters["paper"]
 	if ok {
 		filterString := getFilters(query.Filters)
-		fullString := fmt.Sprintf("%s%s", queryString, filterString)
+		fullString := fmt.Sprintf("%s%%20AND%%20%s", queryString, filterString)
 		return fullString
 	} else {
 		return queryString
