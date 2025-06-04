@@ -338,6 +338,20 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, aggsClause, "publisherName")
 	assert.Contains(t, aggsClause, "dataType")
 	assert.Contains(t, aggsClause, "populationSize")
+
+	// assert the aggregations clause has both aggs and filters inside 
+	// so facet numbers are updated according to filtering
+	publisherAggsClause := aggsClause["publisherName"].(gin.H)
+	assert.Contains(t, publisherAggsClause, "aggs")
+	assert.Contains(t, publisherAggsClause, "filter")
+
+	publisherInnerAgg, _ := json.Marshal(publisherAggsClause["aggs"])
+	assert.Contains(t, string(publisherInnerAgg), "publisherName")
+	
+	publisherInnerFilter, _ := json.Marshal(publisherAggsClause["filter"])
+	assert.Contains(t, string(publisherInnerFilter), "dataType")
+	assert.Contains(t, string(publisherInnerFilter), "populationSize")
+	assert.NotContains(t, string(publisherInnerFilter), "publisherName")
 }
 
 func TestCollectionElasticConfig(t *testing.T) {
@@ -506,8 +520,11 @@ func TestPublicationElasticConfig(t *testing.T) {
 	assert.Contains(t, pubConfig, "aggs")
 	aggsClause := pubConfig["aggs"].(gin.H)
 	assert.Contains(t, aggsClause, "publicationType")
-	assert.Contains(t, aggsClause, "startDate")
-	assert.Contains(t, aggsClause, "endDate")
+	assert.Contains(t, aggsClause, "publicationDate")
+
+	pubDateClause, _ := json.Marshal(aggsClause["publicationDate"])
+	assert.Contains(t, string(pubDateClause), "startDate")
+	assert.Contains(t, string(pubDateClause), "endDate")
 }
 
 func TestDataProviderElasticConfig(t *testing.T) {
