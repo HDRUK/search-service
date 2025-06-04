@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/HDRUK/search-service/compare/v1.1.0...v1.2.0) (2025-06-04)
+
+### ✨ Features
+
+* **GAT-6172:** update facet numbers when other filters are applied (#161) ([b5f2eec](https://github.com/HDRUK/search-service/commit/b5f2eec8d8d39826741e5eac56de5990240eb6ea)), closes [GAT-6172](GAT-6172)
+
 ## [1.1.0](https://github.com/HDRUK/search-service/compare/v1.0.1...v1.1.0) (2025-05-20)
 
 ### ✨ Features
