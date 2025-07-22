@@ -128,6 +128,12 @@ func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
 	}, "", nil
 }
 
+func HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status": "OK",
+	})
+}
+
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
 // tools and collections, using the query supplied in the gin.Context.
 // Search results are returned grouped by entity type.
