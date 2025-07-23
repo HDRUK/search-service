@@ -129,9 +129,72 @@ func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
 }
 
 func HealthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status": "OK",
-	})
+	results := make(map[string]interface{})
+
+	// Ping elastic
+	elasticResponse, err := ElasticClient.Info()
+	if err != nil {
+		slog.Debug(fmt.Sprintf("%v", err.Error()))
+	}
+	results["elastic_status"] = elasticResponse.StatusCode
+
+	defer elasticResponse.Body.Close()
+
+	if elasticResponse.StatusCode != 200 {
+		body, err := io.ReadAll(elasticResponse.Body)
+		if err != nil {
+			slog.Debug(fmt.Sprintf(
+				"Failed to read elastic response with %s",
+				err.Error()),
+			)
+		}
+		var elasticError SearchErrorResponse
+		json.Unmarshal(body, &elasticError)
+		rootCause := elasticError.Error["root_cause"][0]
+		results["elastic_error"] = rootCause.Type
+	}
+
+	// TODO: Ping search explanation extractor once it has a healthcheck endpoint of its own
+
+	// Ping BigQuery 
+	ctx := context.Background()
+	_, bqErr := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME")).Metadata(ctx)
+	if bqErr != nil {
+		var e *googleapi.Error
+		if errors.As(bqErr, &e) {
+			results["bigquery_status"] = e.Code
+			results["bigquery_message"] = e.Message
+		} 
+	} else {
+		results["bigquery_status"] = 200
+	}
+
+	// Ping EPMC API
+	urlPath := fmt.Sprintf(
+		"%s/search?query=test&resultType=lite&format=json&pageSize=1",
+		os.Getenv("PMC_URL"),
+	)
+	req, err := http.NewRequest("GET", urlPath, strings.NewReader(""))
+	if err != nil {
+		slog.Info(fmt.Sprintf("Failed to build EPMC query with: %s", err.Error()))
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	response, err := Client.Do(req)
+	if err != nil {
+		slog.Info(fmt.Sprintf("Failed to execute EPMC query with: %s", err.Error()))
+	}
+	defer response.Body.Close()
+
+	results["epmc_status"] = response.StatusCode
+
+	if response.StatusCode != 200 {
+		results["epmc_error"] = response.Status
+	}
+
+	results["search_service_status"] = "OK"
+
+	c.JSON(http.StatusOK, results)
 }
 
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
