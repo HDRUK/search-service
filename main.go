@@ -27,6 +27,9 @@ func main() {
 	search.DefineElasticClient()
 
 	router := gin.Default()
+
+	router.GET("/status", search.HealthCheck)
+
 	// Define generic search endpoint, searches across all available entities
 	router.POST("/search", search.SearchGeneric)
 	router.POST("/search/datasets", search.DatasetSearch)
