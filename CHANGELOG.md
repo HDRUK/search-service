@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/HDRUK/search-service/compare/v1.2.0...v1.3.0) (2025-07-30)
+
+### ✨ Features
+
+* **GAT-7219:** add health check (#164) ([df1dceb](https://github.com/HDRUK/search-service/commit/df1dcebdc4478bb88a657eaafc79e603e09ddf88)), closes [GAT-7219](GAT-7219)
+
 ## [1.2.0](https://github.com/HDRUK/search-service/compare/v1.1.0...v1.2.0) (2025-06-04)
 
 ### ✨ Features
