@@ -28,6 +28,10 @@ func main() {
 
 	router := gin.Default()
 
+	if err := search.EnsureTableExists(); err != nil {
+		fmt.Println("Failed to ensure BigQuery table exists: ", err)
+	}
+
 	router.GET("/status", search.HealthCheck)
 
 	// Define generic search endpoint, searches across all available entities
