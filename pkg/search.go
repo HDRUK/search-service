@@ -197,6 +197,35 @@ func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, results)
 }
 
+func EnsureTableExists() error {
+
+	ctx := context.Background()
+    dataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
+    table := dataset.Table(os.Getenv("BQ_TABLE_NAME"))
+
+	schema := bigquery.Schema{
+		{Name: "UUID", Required: true, Type: bigquery.StringFieldType},
+		{Name: "Timestamp", Required: false, Type: bigquery.DateTimeFieldType},
+		{Name: "EntityType", Required: true, Type: bigquery.StringFieldType},
+		{Name: "SearchTerm", Required: false, Type: bigquery.StringFieldType},
+		{Name: "FilterUsed", Repeated: false, Type: bigquery.JSONFieldType},
+		{Name: "PageResults", Required: false, Type: bigquery.JSONFieldType},
+		{Name: "EntitiesReturned", Required: true, Type: bigquery.IntegerFieldType},
+	}
+
+	if err := table.Create(ctx, &bigquery.TableMetadata{Schema: schema}); err != nil {
+		var e *googleapi.Error
+		if errors.As(err, &e)  && e.Code == 409 {
+			slog.Debug(fmt.Sprintf("%s", err.Error()))
+			return nil
+		}
+		slog.Info(fmt.Sprintf("Could not create table: %s", err.Error()))
+		return err
+	}
+	return nil
+}
+
+
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
 // tools and collections, using the query supplied in the gin.Context.
 // Search results are returned grouped by entity type.
@@ -1950,27 +1979,6 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
 	table := analyticsDataset.Table(os.Getenv("BQ_TABLE_NAME"))
-
-	schema := bigquery.Schema{
-		{Name: "UUID", Required: true, Type: bigquery.StringFieldType},
-		{Name: "Timestamp", Required: false, Type: bigquery.DateTimeFieldType},
-		{Name: "EntityType", Required: true, Type: bigquery.StringFieldType},
-		{Name: "SearchTerm", Required: false, Type: bigquery.StringFieldType},
-		{Name: "FilterUsed", Repeated: false, Type: bigquery.JSONFieldType},
-		{Name: "PageResults", Required: false, Type: bigquery.JSONFieldType},
-		{Name: "EntitiesReturned", Required: true, Type: bigquery.IntegerFieldType},
-	}
-
-	if err := table.Create(ctx, &bigquery.TableMetadata{Schema: schema}); err != nil {
-		var e *googleapi.Error
-		if errors.As(err, &e) {
-			if e.Code == 409 {
-				slog.Debug(fmt.Sprintf("%s", err.Error()))
-			}
-		} else {
-			slog.Info(fmt.Sprintf("Could not create table: %s", err.Error()))
-		}
-	}
 
 	u := table.Inserter()
 
