@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/HDRUK/search-service/compare/v1.3.0...v1.4.0) (2025-11-20)
+
+### ✨ Features
+
+* **GAT-8105:** Speed up search load times (#168) ([fdaa3e1](https://github.com/HDRUK/search-service/commit/fdaa3e1b9e4285881b2e10cb2c946337dfb8f42f)), closes [GAT-8105](GAT-8105)
+
 ## [1.3.0](https://github.com/HDRUK/search-service/compare/v1.2.0...v1.3.0) (2025-07-30)
 
 ### ✨ Features
