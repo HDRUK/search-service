@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/HDRUK/search-service/compare/v1.4.0...v1.5.0) (2026-01-20)
+
+### ✨ Features
+
+* **GAT-1234:** Update healthcheck (#173) ([a1674c3](https://github.com/HDRUK/search-service/commit/a1674c33c0e9a876c96cd55421ef27dba8218a1e)), closes [GAT-1234](GAT-1234)
+
 ## [1.4.0](https://github.com/HDRUK/search-service/compare/v1.3.0...v1.4.0) (2025-11-20)
 
 ### ✨ Features
