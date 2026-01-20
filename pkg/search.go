@@ -130,17 +130,20 @@ func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
 
 func HealthCheck(c *gin.Context) {
 	results := make(map[string]interface{})
+	responseStatus := http.StatusOK
 
 	// Ping elastic
 	elasticResponse, err := ElasticClient.Info()
 	if err != nil {
 		slog.Debug(fmt.Sprintf("%v", err.Error()))
+		responseStatus = http.StatusServiceUnavailable
 	}
 	results["elastic_status"] = elasticResponse.StatusCode
 
 	defer elasticResponse.Body.Close()
 
 	if elasticResponse.StatusCode != 200 {
+		responseStatus = elasticResponse.StatusCode
 		body, err := io.ReadAll(elasticResponse.Body)
 		if err != nil {
 			slog.Debug(fmt.Sprintf(
@@ -164,37 +167,18 @@ func HealthCheck(c *gin.Context) {
 		if errors.As(bqErr, &e) {
 			results["bigquery_status"] = e.Code
 			results["bigquery_message"] = e.Message
+			responseStatus = e.Code
+		} else {
+			results["bigquery_status"] = http.StatusInternalServerError
+			responseStatus = http.StatusInternalServerError
 		} 
 	} else {
 		results["bigquery_status"] = 200
 	}
 
-	// Ping EPMC API
-	urlPath := fmt.Sprintf(
-		"%s/search?query=test&resultType=lite&format=json&pageSize=1",
-		os.Getenv("PMC_URL"),
-	)
-	req, err := http.NewRequest("GET", urlPath, strings.NewReader(""))
-	if err != nil {
-		slog.Info(fmt.Sprintf("Failed to build EPMC query with: %s", err.Error()))
-	}
-	req.Header.Add("Content-Type", "application/json")
-
-	response, err := Client.Do(req)
-	if err != nil {
-		slog.Info(fmt.Sprintf("Failed to execute EPMC query with: %s", err.Error()))
-	}
-	defer response.Body.Close()
-
-	results["epmc_status"] = response.StatusCode
-
-	if response.StatusCode != 200 {
-		results["epmc_error"] = response.Status
-	}
-
 	results["search_service_status"] = "OK"
 
-	c.JSON(http.StatusOK, results)
+	c.JSON(responseStatus, results)
 }
 
 func EnsureTableExists() error {
