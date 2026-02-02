@@ -34,7 +34,12 @@ var (
 
 func DefineElasticClient() {
 	ElasticClient = elastic.DefaultClient()
-	BigQueryClient = bigqueryclient.DefaultBigQueryClient()
+	if os.Getenv("SEARCH_ANALYTICS_DISABLED") != "true" {
+		BigQueryClient = bigqueryclient.DefaultBigQueryClient()
+	 } else {
+		BigQueryClient = nil
+		BQUpload = func(Query, SearchResponse, string) {}
+  }
 }
 
 /*
@@ -160,20 +165,24 @@ func HealthCheck(c *gin.Context) {
 	// TODO: Ping search explanation extractor once it has a healthcheck endpoint of its own
 
 	// Ping BigQuery 
-	ctx := context.Background()
-	_, bqErr := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME")).Metadata(ctx)
-	if bqErr != nil {
-		var e *googleapi.Error
-		if errors.As(bqErr, &e) {
-			results["bigquery_status"] = e.Code
-			results["bigquery_message"] = e.Message
-			responseStatus = e.Code
-		} else {
-			results["bigquery_status"] = http.StatusInternalServerError
-			responseStatus = http.StatusInternalServerError
-		} 
-	} else {
+	if os.Getenv("SEARCH_ANALYTICS_DISABLED") == "true" {
 		results["bigquery_status"] = 200
+	} else {
+		ctx := context.Background()
+		_, bqErr := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME")).Metadata(ctx)
+		if bqErr != nil {
+			var e *googleapi.Error
+			if errors.As(bqErr, &e) {
+				results["bigquery_status"] = e.Code
+				results["bigquery_message"] = e.Message
+				responseStatus = e.Code
+			} else {
+				results["bigquery_status"] = http.StatusInternalServerError
+				responseStatus = http.StatusInternalServerError
+			} 
+		} else {
+			results["bigquery_status"] = 200
+		}
 	}
 
 	results["search_service_status"] = "OK"
@@ -182,6 +191,9 @@ func HealthCheck(c *gin.Context) {
 }
 
 func EnsureTableExists() error {
+	if os.Getenv("SEARCH_ANALYTICS_DISABLED") == "true" {
+		return nil
+	}
 
 	ctx := context.Background()
     dataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
@@ -1959,6 +1971,9 @@ func similarSearch(id string, index string) SearchResponse {
 }
 
 func uploadSearchAnalytics(query Query, results SearchResponse, entityType string) {
+	if os.Getenv("SEARCH_ANALYTICS_DISABLED") == "true" {
+		return
+	}
 
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
