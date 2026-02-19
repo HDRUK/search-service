@@ -52,7 +52,8 @@ var epmcRespJson = `{
 						"research-article",
 						"Journal Article"
 					]
-				}
+				},
+				"firstPublicationDate": "2021-05-01"
 			}
 		]
 	}
@@ -79,7 +80,7 @@ func MockPostToFieldSearch(c *gin.Context) {
 	bodyContent := gin.H{
 		"query": "A Very Useful Dataset (AVUD)",
 		"field": []string{
-			"TITLE","ABSTRACT","METHODS",
+			"TITLE", "ABSTRACT", "METHODS",
 		},
 		"filters": gin.H{
 			"paper": gin.H{
@@ -101,7 +102,7 @@ func MockPostToArrayFieldSearch(c *gin.Context) {
 	bodyContent := gin.H{
 		"query": []string{"A Very Useful Dataset (AVUD)", "A Second Very Useful Dataset (ASVUD)"},
 		"field": []string{
-			"TITLE","ABSTRACT","METHODS",
+			"TITLE", "ABSTRACT", "METHODS",
 		},
 		"filters": gin.H{
 			"paper": gin.H{
@@ -121,7 +122,7 @@ func TestExtractDOI(t *testing.T) {
 	doi := "https://doi.org/10.1010/a11-22(22)33v3"
 	extracted := extractDOI(doi)
 	expected := "10.1010/a11-22\\(22\\)33v3"
-	
+
 	assert.EqualValues(t, expected, extracted)
 
 	doiInvalid := "https://doi.org"
@@ -236,7 +237,7 @@ func TestArrayFieldSearch(t *testing.T) {
 func TestBuildQueryString(t *testing.T) {
 	query := FieldQuery{
 		QueryString: "A Very Useful / Dataset (AVUD)",
-		Field : []string{"TITLE","ABSTRACT","METHODS"},
+		Field:       []string{"TITLE", "ABSTRACT", "METHODS"},
 		Filters: map[string]map[string]interface{}{
 			"paper": {
 				"publicationDate": []interface{}{"2020", "2021"},
@@ -244,9 +245,9 @@ func TestBuildQueryString(t *testing.T) {
 			},
 		},
 	}
-	
+
 	queryString := buildQueryString(query)
-	
+
 	assert.Contains(t, queryString, "TITLE")
 	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
 	assert.Contains(t, queryString, "SRC:PPR")
@@ -264,9 +265,9 @@ func TestBuildDoiQuery(t *testing.T) {
 			},
 		},
 	}
-	
+
 	queryString := buildDoiQuery(query)
-	
+
 	assert.Contains(t, queryString, "DOI:10.3310/abcde")
 	assert.Contains(t, queryString, "PUB_TYPE:REVIEW")
 	assert.Contains(t, queryString, "SRC:PPR")
