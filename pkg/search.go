@@ -115,6 +115,7 @@ type SearchAnalytics struct {
 	FilterUsed       string
 	PageResults      string
 	EntitiesReturned int
+	SearchUuid       string
 }
 
 func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
@@ -219,6 +220,13 @@ func SearchGeneric(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	searchUuid := uuid.New().String()
+	slog.Debug(fmt.Sprintf(
+		"SearchGeneric searchUuid: %s",
+		searchUuid),
+	)
+
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
@@ -229,13 +237,13 @@ func SearchGeneric(c *gin.Context) {
 
 	results := make(map[string]interface{})
 
-	go datasetChannel(query, datasetResults)
-	go toolChannel(query, toolResults)
-	go collectionChannel(query, collectionResults)
-	go dataUseChannel(query, dataUseResults)
-	go publicationChannel(query, publicationResults)
-	go dataProviderChannel(query, dataProviderResults)
-	go dataCustodianNetworkChannel(query, dataCustodianNetworkResults)
+	go datasetChannel(query, searchUuid, datasetResults)
+	go toolChannel(query, searchUuid, toolResults)
+	go collectionChannel(query, searchUuid, collectionResults)
+	go dataUseChannel(query, searchUuid, dataUseResults)
+	go publicationChannel(query, searchUuid, publicationResults)
+	go dataProviderChannel(query, searchUuid, dataProviderResults)
+	go dataCustodianNetworkChannel(query, searchUuid, dataCustodianNetworkResults)
 
 	for i := 0; i < 7; i++ {
 		select {
@@ -268,7 +276,7 @@ func DatasetSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := datasetSearch(query, searchUuid)
-	BQUpload(query, results, "dataset")
+	BQUpload(query, results, "dataset", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -538,7 +546,7 @@ func ToolSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := toolSearch(query, searchUuid)
-	BQUpload(query, results, "tool")
+	BQUpload(query, results, "tool", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -751,7 +759,7 @@ func CollectionSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := collectionSearch(query, searchUuid)
-	BQUpload(query, results, "collection")
+	BQUpload(query, results, "collection", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -969,7 +977,7 @@ func DataUseSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := dataUseSearch(query, searchUuid)
-	BQUpload(query, results, "datauseregister")
+	BQUpload(query, results, "datauseregister", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1179,7 +1187,7 @@ func PublicationSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := publicationSearch(query, searchUuid)
-	BQUpload(query, results, "publication")
+	BQUpload(query, results, "publication", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1406,7 +1414,7 @@ func DataProviderSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := dataProviderSearch(query, searchUuid)
-	BQUpload(query, results, "dataprovider")
+	BQUpload(query, results, "dataprovider", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1609,7 +1617,7 @@ func DataCustodianNetworkSearch(c *gin.Context) {
 
 	searchUuid := uuid.New().String()
 	results := dataCustodianNetworkSearch(query, searchUuid)
-	BQUpload(query, results, "datacustodiannetwork")
+	BQUpload(query, results, "datacustodiannetwork", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
@@ -1976,7 +1984,7 @@ func similarSearch(id string, index string) SearchResponse {
 	return elasticResp
 }
 
-func uploadSearchAnalytics(query Query, results SearchResponse, entityType string) {
+func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, searchUuid string) {
 
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
@@ -2006,6 +2014,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 		FilterUsed:       string(filterUsed),
 		PageResults:      string(pageResults),
 		EntitiesReturned: int(results.Hits.Total["value"].(float64)),
+		SearchUuid:       searchUuid,
 	}
 
 	if err := u.Put(ctx, searchResult); err != nil {
