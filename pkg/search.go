@@ -196,7 +196,6 @@ func EnsureTableExists() error {
 		{Name: "FilterUsed", Repeated: false, Type: bigquery.JSONFieldType},
 		{Name: "PageResults", Required: false, Type: bigquery.JSONFieldType},
 		{Name: "EntitiesReturned", Required: true, Type: bigquery.IntegerFieldType},
-		{Name: "SearchUuid", Required: false, Type: bigquery.StringFieldType},
 	}
 
 	if err := table.Create(ctx, &bigquery.TableMetadata{Schema: schema}); err != nil {
@@ -1981,7 +1980,7 @@ func similarSearch(id string, index string) SearchResponse {
 	return elasticResp
 }
 
-func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, searchUuid string) {
+func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, Uuid string) {
 
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
@@ -2004,14 +2003,13 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	}
 
 	searchResult := SearchAnalytics{
-		UUID:             uuid.New().String(),
+		UUID:             Uuid,
 		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
 		EntityType:       entityType,
 		SearchTerm:       query.QueryString,
 		FilterUsed:       string(filterUsed),
 		PageResults:      string(pageResults),
 		EntitiesReturned: int(results.Hits.Total["value"].(float64)),
-		SearchUuid:       searchUuid,
 	}
 
 	if err := u.Put(ctx, searchResult); err != nil {
