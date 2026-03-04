@@ -115,7 +115,6 @@ type SearchAnalytics struct {
 	FilterUsed       string
 	PageResults      string
 	EntitiesReturned int
-	SearchUuid       string
 }
 
 func (a *SearchAnalytics) Save() (map[string]bigquery.Value, string, error) {
@@ -1980,7 +1979,7 @@ func similarSearch(id string, index string) SearchResponse {
 	return elasticResp
 }
 
-func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, Uuid string) {
+func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, searchUuid string) {
 
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
@@ -2003,7 +2002,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	}
 
 	searchResult := SearchAnalytics{
-		UUID:             Uuid,
+		UUID:             searchUuid,
 		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
 		EntityType:       entityType,
 		SearchTerm:       query.QueryString,
