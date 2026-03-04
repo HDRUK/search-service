@@ -1883,10 +1883,6 @@ func extractExplanation(elasticResp SearchResponse, query Query, searchUuid stri
 		"search_uuid":       searchUuid,
 	}
 
-	slog.Debug(fmt.Sprintf(
-		"searchUuid: %s", searchUuid,
-	))
-
 	body, err := json.Marshal(bodyContent)
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to marshal search explanation payload: %s", err.Error()))
@@ -1912,8 +1908,9 @@ func extractExplanation(elasticResp SearchResponse, query Query, searchUuid stri
 			"Failed to extract search explanation with error %s", err.Error(),
 		))
 	}
+
 	slog.Debug(fmt.Sprintf(
-		"Search explanation extraction routine exited with response: %s", respBody,
+		"Search explanation extraction routine exited with response: %s, uuid: %s", respBody, searchUuid,
 	))
 }
 
