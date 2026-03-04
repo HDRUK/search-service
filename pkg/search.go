@@ -220,10 +220,6 @@ func SearchGeneric(c *gin.Context) {
 	}
 
 	searchUuid := uuid.New().String()
-	slog.Debug(fmt.Sprintf(
-		"SearchGeneric searchUuid: %s",
-		searchUuid),
-	)
 
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
@@ -2014,4 +2010,6 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	if err := u.Put(ctx, searchResult); err != nil {
 		slog.Info(fmt.Sprintf("Failed to upload search analytics to BigQuery: %s", err.Error()))
 	}
+
+	slog.Debug(fmt.Sprintf("SearchGeneric UUID: %s", searchUuid))
 }
