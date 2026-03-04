@@ -27,7 +27,7 @@ func init() {
 		}, nil
 	}
 
-	BQUpload = func(query Query, results SearchResponse, entityType string) {}
+	BQUpload = func(query Query, results SearchResponse, entityType string, searchUuid string) {}
 }
 
 func GetTestGinContext(w *httptest.ResponseRecorder) *gin.Context {
@@ -339,7 +339,7 @@ func TestDatasetElasticConfig(t *testing.T) {
 	assert.Contains(t, aggsClause, "dataType")
 	assert.Contains(t, aggsClause, "populationSize")
 
-	// assert the aggregations clause has both aggs and filters inside 
+	// assert the aggregations clause has both aggs and filters inside
 	// so facet numbers are updated according to filtering
 	publisherAggsClause := aggsClause["publisherName"].(gin.H)
 	assert.Contains(t, publisherAggsClause, "aggs")
@@ -347,7 +347,7 @@ func TestDatasetElasticConfig(t *testing.T) {
 
 	publisherInnerAgg, _ := json.Marshal(publisherAggsClause["aggs"])
 	assert.Contains(t, string(publisherInnerAgg), "publisherName")
-	
+
 	publisherInnerFilter, _ := json.Marshal(publisherAggsClause["filter"])
 	assert.Contains(t, string(publisherInnerFilter), "dataType")
 	assert.Contains(t, string(publisherInnerFilter), "populationSize")
