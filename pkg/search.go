@@ -409,6 +409,7 @@ func datasetElasticConfig(query Query) gin.H {
 			"title",
 			"named_entities",
 			"datasetDOI",
+			"datasetAliases",
 		}
 		mm1 := gin.H{
 			"multi_match": gin.H{
