@@ -159,7 +159,7 @@ func HealthCheck(c *gin.Context) {
 
 	// TODO: Ping search explanation extractor once it has a healthcheck endpoint of its own
 
-	// Ping BigQuery 
+	// Ping BigQuery
 	ctx := context.Background()
 	_, bqErr := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME")).Metadata(ctx)
 	if bqErr != nil {
@@ -171,7 +171,7 @@ func HealthCheck(c *gin.Context) {
 		} else {
 			results["bigquery_status"] = http.StatusInternalServerError
 			responseStatus = http.StatusInternalServerError
-		} 
+		}
 	} else {
 		results["bigquery_status"] = 200
 	}
@@ -184,8 +184,8 @@ func HealthCheck(c *gin.Context) {
 func EnsureTableExists() error {
 
 	ctx := context.Background()
-    dataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
-    table := dataset.Table(os.Getenv("BQ_TABLE_NAME"))
+	dataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
+	table := dataset.Table(os.Getenv("BQ_TABLE_NAME"))
 
 	schema := bigquery.Schema{
 		{Name: "UUID", Required: true, Type: bigquery.StringFieldType},
@@ -199,7 +199,7 @@ func EnsureTableExists() error {
 
 	if err := table.Create(ctx, &bigquery.TableMetadata{Schema: schema}); err != nil {
 		var e *googleapi.Error
-		if errors.As(err, &e)  && e.Code == 409 {
+		if errors.As(err, &e) && e.Code == 409 {
 			slog.Debug(fmt.Sprintf("%s", err.Error()))
 			return nil
 		}
@@ -208,7 +208,6 @@ func EnsureTableExists() error {
 	}
 	return nil
 }
-
 
 // SearchGeneric performs searches of the ElasticSearch indices for datasets,
 // tools and collections, using the query supplied in the gin.Context.
@@ -219,6 +218,9 @@ func SearchGeneric(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	searchUuid := uuid.New().String()
+
 	datasetResults := make(chan SearchResponse)
 	toolResults := make(chan SearchResponse)
 	collectionResults := make(chan SearchResponse)
@@ -229,13 +231,13 @@ func SearchGeneric(c *gin.Context) {
 
 	results := make(map[string]interface{})
 
-	go datasetChannel(query, datasetResults)
-	go toolChannel(query, toolResults)
-	go collectionChannel(query, collectionResults)
-	go dataUseChannel(query, dataUseResults)
-	go publicationChannel(query, publicationResults)
-	go dataProviderChannel(query, dataProviderResults)
-	go dataCustodianNetworkChannel(query, dataCustodianNetworkResults)
+	go datasetChannel(query, searchUuid, datasetResults)
+	go toolChannel(query, searchUuid, toolResults)
+	go collectionChannel(query, searchUuid, collectionResults)
+	go dataUseChannel(query, searchUuid, dataUseResults)
+	go publicationChannel(query, searchUuid, publicationResults)
+	go dataProviderChannel(query, searchUuid, dataProviderResults)
+	go dataCustodianNetworkChannel(query, searchUuid, dataCustodianNetworkResults)
 
 	for i := 0; i < 7; i++ {
 		select {
@@ -266,20 +268,21 @@ func DatasetSearch(c *gin.Context) {
 		return
 	}
 
-	results := datasetSearch(query)
-	BQUpload(query, results, "dataset")
+	searchUuid := uuid.New().String()
+	results := datasetSearch(query, searchUuid)
+	BQUpload(query, results, "dataset", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func datasetChannel(query Query, res chan SearchResponse) {
-	elasticResp := datasetSearch(query)
+func datasetChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := datasetSearch(query, searchUuid)
 	res <- elasticResp
 }
 
 // datasetSearch performs a search of the ElasticSearch datasets index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func datasetSearch(query Query) SearchResponse {
+func datasetSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := datasetElasticConfig(query)
@@ -336,7 +339,7 @@ func datasetSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "dataset")
+	stripExplanation(elasticResp, query, "dataset", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -534,20 +537,22 @@ func ToolSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-	results := toolSearch(query)
-	BQUpload(query, results, "tool")
+
+	searchUuid := uuid.New().String()
+	results := toolSearch(query, searchUuid)
+	BQUpload(query, results, "tool", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func toolChannel(query Query, res chan SearchResponse) {
-	elasticResp := toolSearch(query)
+func toolChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := toolSearch(query, searchUuid)
 	res <- elasticResp
 }
 
 // toolSearch performs a search of the ElasticSearch tools index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func toolSearch(query Query) SearchResponse {
+func toolSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := toolsElasticConfig(query)
@@ -588,7 +593,7 @@ func toolSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "tool")
+	stripExplanation(elasticResp, query, "tool", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -745,20 +750,22 @@ func CollectionSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-	results := collectionSearch(query)
-	BQUpload(query, results, "collection")
+
+	searchUuid := uuid.New().String()
+	results := collectionSearch(query, searchUuid)
+	BQUpload(query, results, "collection", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func collectionChannel(query Query, res chan SearchResponse) {
-	elasticResp := collectionSearch(query)
+func collectionChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := collectionSearch(query, searchUuid)
 	res <- elasticResp
 }
 
 // collectionsSearch performs a search of the ElasticSearch collections index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func collectionSearch(query Query) SearchResponse {
+func collectionSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := collectionsElasticConfig(query)
@@ -799,7 +806,7 @@ func collectionSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "collection")
+	stripExplanation(elasticResp, query, "collection", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -961,20 +968,22 @@ func DataUseSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-	results := dataUseSearch(query)
-	BQUpload(query, results, "datauseregister")
+
+	searchUuid := uuid.New().String()
+	results := dataUseSearch(query, searchUuid)
+	BQUpload(query, results, "datauseregister", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func dataUseChannel(query Query, res chan SearchResponse) {
-	elasticResp := dataUseSearch(query)
+func dataUseChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := dataUseSearch(query, searchUuid)
 	res <- elasticResp
 }
 
 // dataUseSearch performs a search of the ElasticSearch data uses index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func dataUseSearch(query Query) SearchResponse {
+func dataUseSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := dataUseElasticConfig(query)
@@ -1015,7 +1024,7 @@ func dataUseSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "dur")
+	stripExplanation(elasticResp, query, "dur", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -1169,13 +1178,15 @@ func PublicationSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-	results := publicationSearch(query)
-	BQUpload(query, results, "publication")
+
+	searchUuid := uuid.New().String()
+	results := publicationSearch(query, searchUuid)
+	BQUpload(query, results, "publication", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func publicationChannel(query Query, res chan SearchResponse) {
-	elasticResp := publicationSearch(query)
+func publicationChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := publicationSearch(query, searchUuid)
 	res <- elasticResp
 }
 
@@ -1184,7 +1195,7 @@ func publicationChannel(query Query, res chan SearchResponse) {
 // returned by elastic (SearchResponse).
 // The publications index consists of the publications that are hosted on the
 // Gateway - this is not a federated search.
-func publicationSearch(query Query) SearchResponse {
+func publicationSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := publicationElasticConfig(query)
@@ -1225,7 +1236,7 @@ func publicationSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "publication")
+	stripExplanation(elasticResp, query, "publication", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -1395,20 +1406,21 @@ func DataProviderSearch(c *gin.Context) {
 		return
 	}
 
-	results := dataProviderSearch(query)
-	BQUpload(query, results, "dataprovider")
+	searchUuid := uuid.New().String()
+	results := dataProviderSearch(query, searchUuid)
+	BQUpload(query, results, "dataprovider", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func dataProviderChannel(query Query, res chan SearchResponse) {
-	elasticResp := dataProviderSearch(query)
+func dataProviderChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := dataProviderSearch(query, searchUuid)
 	res <- elasticResp
 }
 
 // dataProviderSearch performs a search of the ElasticSearch dataproviders index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func dataProviderSearch(query Query) SearchResponse {
+func dataProviderSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := dataProviderElasticConfig(query)
@@ -1449,7 +1461,7 @@ func dataProviderSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "dataProvider")
+	stripExplanation(elasticResp, query, "dataProvider", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -1596,20 +1608,22 @@ func DataCustodianNetworkSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-	results := dataCustodianNetworkSearch(query)
-	BQUpload(query, results, "datacustodiannetwork")
+
+	searchUuid := uuid.New().String()
+	results := dataCustodianNetworkSearch(query, searchUuid)
+	BQUpload(query, results, "datacustodiannetwork", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func dataCustodianNetworkChannel(query Query, res chan SearchResponse) {
-	elasticResp := dataCustodianNetworkSearch(query)
+func dataCustodianNetworkChannel(query Query, searchUuid string, res chan SearchResponse) {
+	elasticResp := dataCustodianNetworkSearch(query, searchUuid)
 	res <- elasticResp
 }
 
 // dataCustodianNetworkSearch performs a search of the ElasticSearch dataCustodianNetworks index using
 // the provided query as the search term.  Results are returned in the format
 // returned by elastic (SearchResponse).
-func dataCustodianNetworkSearch(query Query) SearchResponse {
+func dataCustodianNetworkSearch(query Query, searchUuid string) SearchResponse {
 	var buf bytes.Buffer
 
 	elasticQuery := dataCustodianNetworkElasticConfig(query)
@@ -1650,7 +1664,7 @@ func dataCustodianNetworkSearch(query Query) SearchResponse {
 		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
 	}
 
-	stripExplanation(elasticResp, query, "datacustodiannetwork")
+	stripExplanation(elasticResp, query, "datacustodiannetwork", searchUuid)
 	newAggs := flattenAggs(elasticResp)
 
 	elasticResp.Aggregations = newAggs
@@ -1790,7 +1804,7 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 				slog.Info("Could not marshal filter")
 			}
 			filStr := string(filJson)
-			if (strings.Contains(filStr, k)) {
+			if strings.Contains(filStr, k) {
 				continue
 			} else {
 				filters = append(filters, fil)
@@ -1798,7 +1812,7 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 		}
 
 		agg1[k] = gin.H{
-			"aggs": aggInner, 
+			"aggs":   aggInner,
 			"filter": gin.H{"bool": gin.H{"must": filters}},
 		}
 	}
@@ -1831,12 +1845,12 @@ func flattenAggs(elasticResp SearchResponse) map[string]any {
 
 // Remove the explanations from a SearchResponse to reduce its size
 // And send explanation to search explanation extractor
-func stripExplanation(elasticResp SearchResponse, query Query, entityType string) {
+func stripExplanation(elasticResp SearchResponse, query Query, entityType string, searchUuid string) {
 	_, expEnabled := os.LookupEnv("SEARCH_EXPLANATION_EXTRACTOR")
 	// Send explanation if enabled, entity is dataset and query is not empty
 	if expEnabled && entityType == "dataset" && !reflect.ValueOf(query).IsZero() {
 		respCopy := copyResponseHits(elasticResp)
-		go extractExplanation(respCopy, query)
+		go extractExplanation(respCopy, query, searchUuid)
 	}
 
 	for i := range elasticResp.Hits.Hits {
@@ -1855,12 +1869,14 @@ func copyResponseHits(r SearchResponse) SearchResponse {
 	}
 }
 
-func extractExplanation(elasticResp SearchResponse, query Query) {
+func extractExplanation(elasticResp SearchResponse, query Query, searchUuid string) {
 	bodyContent := gin.H{
 		"data":              elasticResp,
 		"query":             fmt.Sprintf("%s", query),
 		"destination_table": os.Getenv("SEARCH_EXPLANATION_TABLE"),
+		"search_uuid":       searchUuid,
 	}
+
 	body, err := json.Marshal(bodyContent)
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to marshal search explanation payload: %s", err.Error()))
@@ -1886,8 +1902,9 @@ func extractExplanation(elasticResp SearchResponse, query Query) {
 			"Failed to extract search explanation with error %s", err.Error(),
 		))
 	}
+
 	slog.Debug(fmt.Sprintf(
-		"Search explanation extraction routine exited with response: %s", respBody,
+		"Search explanation extraction routine exited with response: %s, uuid: %s", respBody, searchUuid,
 	))
 }
 
@@ -1958,7 +1975,7 @@ func similarSearch(id string, index string) SearchResponse {
 	return elasticResp
 }
 
-func uploadSearchAnalytics(query Query, results SearchResponse, entityType string) {
+func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, searchUuid string) {
 
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
@@ -1981,7 +1998,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	}
 
 	searchResult := SearchAnalytics{
-		UUID:             uuid.New().String(),
+		UUID:             searchUuid,
 		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
 		EntityType:       entityType,
 		SearchTerm:       query.QueryString,
@@ -1993,4 +2010,6 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 	if err := u.Put(ctx, searchResult); err != nil {
 		slog.Info(fmt.Sprintf("Failed to upload search analytics to BigQuery: %s", err.Error()))
 	}
+
+	slog.Debug(fmt.Sprintf("SearchGeneric UUID: %s", searchUuid))
 }
