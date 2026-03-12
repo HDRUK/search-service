@@ -124,6 +124,13 @@ func DefineDatasetMappings(c *gin.Context) {
 				"dataType":           gin.H{"type": "keyword"},
 				"dataSubType":        gin.H{"type": "keyword"},
 				"formatAndStandards": gin.H{"type": "keyword"},
+				"datasetAliases": gin.H{
+					"type":     "text",
+					"analyzer": "medterms_index_analyzer",
+					"fields": gin.H{
+						"keyword": gin.H{"type": "keyword"},
+					},
+				},
 			},
 		},
 	}
