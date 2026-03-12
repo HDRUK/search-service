@@ -1,3 +1,14 @@
+## [1.6.0](https://github.com/HDRUK/search-service/compare/v1.5.0...v1.6.0) (2026-03-12)
+
+### ✨ Features
+
+* **GAT-0000:** updated github actions version (#182) ([255f0ee](https://github.com/HDRUK/search-service/commit/255f0eefab0186dcf65e8630c7dd25f85a2f8525)), closes [GAT-0000](GAT-0000)
+* **GAT-6015:** publication date (#177) ([da1639a](https://github.com/HDRUK/search-service/commit/da1639ae9056908b5b003e53ff795186293b502f)), closes [GAT-6015](GAT-6015)
+* **GAT-7957:** added github app authentication for the pipelines (#179) ([c77e268](https://github.com/HDRUK/search-service/commit/c77e268878e78fe07e85995e8a18d6b2ff91f657)), closes [GAT-7957](GAT-7957)
+* **GAT-8092:** Update endpoint for Dataset & BioSample landing pages to include summary.datasetAliases (#181) ([233fb69](https://github.com/HDRUK/search-service/commit/233fb69709633bee34d0160a872f76e6d2f128ae)), closes [GAT-8092](GAT-8092)
+* **GAT-8384:** added release workflow file (#178) ([2816f73](https://github.com/HDRUK/search-service/commit/2816f73e92560d5b6185ebb780e37d2614f47d10)), closes [GAT-8384](GAT-8384)
+* **GAT-8564:** send search uuid (#180) ([0e33864](https://github.com/HDRUK/search-service/commit/0e338643f5e966ed70e2d870de8e0443e478ad18)), closes [GAT-8564](GAT-8564)
+
 ## [1.5.0](https://github.com/HDRUK/search-service/compare/v1.4.0...v1.5.0) (2026-01-20)
 
 ### ✨ Features
