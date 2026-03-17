@@ -61,10 +61,10 @@ jobs:
 
       - name: Read VERSION file
         id: getversion
-        run: | 
+        run: |
           sed -n 's/^appVersion:\(.*\)/\1/p' < "chart/search-service/Chart.yaml" > "version"
-          echo "version=$(sed 's/.*\"\(.*\)\".*/\1/g' "version")" >> "$GITHUB_OUTPUT
-  
+          echo "version=$(sed 's/.*\"\(.*\)\".*/\1/g' "version")" >> "$GITHUB_OUTPUT"
+
       - name: Merge changes from main to dev
         env:
           GITHUB_TOKEN: ${{ steps.generate-deployment-token.outputs.token }}
@@ -95,7 +95,7 @@ jobs:
 
       - name: Read VERSION file
         id: getversion
-        run: | 
+        run: |
           sed -n 's/^appVersion:\(.*\)/\1/p' < "chart/search-service/Chart.yaml" > "version"
           echo "version=$(sed 's/.*\"\(.*\)\".*/\1/g' "version")" >> "$GITHUB_OUTPUT"
 
