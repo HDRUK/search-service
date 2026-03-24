@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/HDRUK/search-service/compare/v1.6.0...v1.7.0) (2026-03-24)
+
+### ✨ Features
+
+* **GAT-8635:** Update search service to include keywords for Publications (#184) ([841550a](https://github.com/HDRUK/search-service/commit/841550ab515ecec30a0fe8529bc1e2fd1ff6acad)), closes [GAT-8635](GAT-8635)
+
 ## [1.6.0](https://github.com/HDRUK/search-service/compare/v1.5.0...v1.6.0) (2026-03-12)
 
 ### ✨ Features
