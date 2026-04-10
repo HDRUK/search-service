@@ -73,7 +73,7 @@ var (
 )
 
 func init() {
-	Client = &http.Client{}
+	Client = &http.Client{Timeout: 30 * time.Second}
 }
 
 // DOISearch takes the given candidate doi string, attempts to extract the DOI
@@ -207,12 +207,14 @@ func getPMC(urlPath string) []byte {
 	req, err := http.NewRequest("GET", urlPath, strings.NewReader(""))
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to build EPMC query with: %s", err.Error()))
+		return nil
 	}
 	req.Header.Add("Content-Type", "application/json")
 
 	response, err := Client.Do(req)
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to execute EPMC query with: %s", err.Error()))
+		return nil
 	}
 	defer response.Body.Close()
 
@@ -348,13 +350,6 @@ func calculateAggregations(results PMCCoreResponse) gin.H {
 	aggregations["startDate"] = gin.H{"value_as_string": minDate.Format(time.RFC3339)}
 	aggregations["endDate"] = gin.H{"value_as_string": maxDate.Format(time.RFC3339)}
 	return aggregations
-}
-
-func reverse(str string) (result string) {
-	for _, v := range str {
-		result = string(v) + result
-	}
-	return
 }
 
 // shuffleArrays takes an array of arrays of generic type and
