@@ -25,6 +25,7 @@ func main() {
 	}
 
 	search.DefineElasticClient()
+	search.InitAuditLogger()
 
 	router := gin.Default()
 
