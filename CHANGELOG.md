@@ -1,3 +1,10 @@
+## [1.8.0](https://github.com/HDRUK/search-service/compare/v1.7.0...v1.8.0) (2026-05-08)
+
+### ✨ Features
+
+* **GAT-7966:** updated semantic pipeline for merge back to dev (#187) ([05af4fd](https://github.com/HDRUK/search-service/commit/05af4fd5c89bd09070e17857f108ad926cc89ce8)), closes [GAT-7966](GAT-7966)
+* **GAT-8737:** Optimisations and refactoring (#188) ([e5469e0](https://github.com/HDRUK/search-service/commit/e5469e0dce87a2b3b64ffb746df8b95ce6364a7c)), closes [GAT-8737](GAT-8737)
+
 ## [1.7.0](https://github.com/HDRUK/search-service/compare/v1.6.0...v1.7.0) (2026-03-24)
 
 ### ✨ Features
