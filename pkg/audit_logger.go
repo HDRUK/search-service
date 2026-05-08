@@ -12,44 +12,54 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func pubSubAudit(actionType string, actionName string, description string) {
-	auditEnabled := os.Getenv("AUDIT_LOG_ENABLED")
+// pubsubClient is initialised once at startup when audit logging is enabled.
+// Creating a new client per call would open a new gRPC connection each time.
+var pubsubClient *pubsub.Client
 
-	if (auditEnabled == "true") {
-		ctx := context.Background()
-		projectId := os.Getenv("PUBSUB_PROJECT_ID")
-		topicName := os.Getenv("PUBSUB_TOPIC_NAME")
-		serviceName := os.Getenv("PUBSUB_SERVICE_NAME")
-
-		client, err := pubsub.NewClient(ctx, projectId)
-		if err != nil {
-			log.Printf("Failed to create client: %v", err)
-		}
-		defer client.Close()
-
-		messageJson := gin.H{
-			"action_type": actionType,
-			"action_name": actionName,
-			"action_service": serviceName,
-			"description": description,
-			"created_at": time.Now().UnixMicro(),
-		}
-		messageByte, err := json.Marshal(messageJson)
-		if err != nil {
-			log.Print(err.Error())
-		}
-
-		message := &pubsub.Message{Data: messageByte}
-
-		topic := client.Topic(topicName)
-		res := topic.Publish(ctx, message)
-
-		id, err := res.Get(ctx)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		fmt.Printf("\npublisher response: %s\n", id)
-
-		fmt.Println("message published")
+// InitAuditLogger creates the PubSub client singleton. Must be called after
+// godotenv.Load() in main so that env vars are available.
+func InitAuditLogger() {
+	if os.Getenv("AUDIT_LOG_ENABLED") != "true" {
+		return
 	}
+	ctx := context.Background()
+	var err error
+	pubsubClient, err = pubsub.NewClient(ctx, os.Getenv("PUBSUB_PROJECT_ID"))
+	if err != nil {
+		log.Printf("Failed to create pubsub client: %v", err)
+	}
+}
+
+func pubSubAudit(actionType string, actionName string, description string) {
+	if os.Getenv("AUDIT_LOG_ENABLED") != "true" || pubsubClient == nil {
+		return
+	}
+
+	ctx := context.Background()
+	topicName := os.Getenv("PUBSUB_TOPIC_NAME")
+	serviceName := os.Getenv("PUBSUB_SERVICE_NAME")
+
+	messageJson := gin.H{
+		"action_type":    actionType,
+		"action_name":    actionName,
+		"action_service": serviceName,
+		"description":    description,
+		"created_at":     time.Now().UnixMicro(),
+	}
+	messageByte, err := json.Marshal(messageJson)
+	if err != nil {
+		log.Print(err.Error())
+		return
+	}
+
+	topic := pubsubClient.Topic(topicName)
+	res := topic.Publish(ctx, &pubsub.Message{Data: messageByte})
+
+	id, err := res.Get(ctx)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	fmt.Printf("\npublisher response: %s\n", id)
+	fmt.Println("message published")
 }

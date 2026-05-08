@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
-	"strings"
+	"strconv"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -30,15 +30,33 @@ var (
 	ElasticClient  *elasticsearch.Client
 	BigQueryClient *bigquery.Client
 	BQUpload       = uploadSearchAnalytics
+
+	// Env vars read once at startup to avoid repeated syscalls on every request.
+	searchNoRecords            int
+	searchNoRecordsAggregation int
+	searchNoRecordsSimilar     int
+	explanationEnabled         bool
+	populationRangesCache      []gin.H
 )
+
+func init() {
+	populationRangesCache = buildPopulationRanges()
+}
 
 func DefineElasticClient() {
 	ElasticClient = elastic.DefaultClient()
 	BigQueryClient = bigqueryclient.DefaultBigQueryClient()
+
+	// Read env vars here, after godotenv.Load() has been called in main().
+	// init() runs before main(), so env vars from .env are not yet available there.
+	searchNoRecords, _ = strconv.Atoi(os.Getenv("SEARCH_NO_RECORDS"))
+	searchNoRecordsAggregation, _ = strconv.Atoi(os.Getenv("SEARCH_NO_RECORDS_AGGREGATION"))
+	searchNoRecordsSimilar, _ = strconv.Atoi(os.Getenv("SEARCH_NO_RECORDS_SIMILAR_SEARCH"))
+	_, explanationEnabled = os.LookupEnv("SEARCH_EXPLANATION_EXTRACTOR")
 }
 
 /*
-	Query represents the search query incoming from the gateway-api
+Query represents the search query incoming from the gateway-api
 
 The body of the request is expected to have the following structure
 ```
@@ -132,34 +150,29 @@ func HealthCheck(c *gin.Context) {
 	results := make(map[string]interface{})
 	responseStatus := http.StatusOK
 
-	// Ping elastic
 	elasticResponse, err := ElasticClient.Info()
 	if err != nil {
 		slog.Debug(fmt.Sprintf("%v", err.Error()))
 		responseStatus = http.StatusServiceUnavailable
-	}
-	results["elastic_status"] = elasticResponse.StatusCode
-
-	defer elasticResponse.Body.Close()
-
-	if elasticResponse.StatusCode != 200 {
-		responseStatus = elasticResponse.StatusCode
-		body, err := io.ReadAll(elasticResponse.Body)
-		if err != nil {
-			slog.Debug(fmt.Sprintf(
-				"Failed to read elastic response with %s",
-				err.Error()),
-			)
+		results["elastic_status"] = http.StatusServiceUnavailable
+	} else {
+		defer elasticResponse.Body.Close()
+		results["elastic_status"] = elasticResponse.StatusCode
+		if elasticResponse.StatusCode != 200 {
+			responseStatus = elasticResponse.StatusCode
+			body, err := io.ReadAll(elasticResponse.Body)
+			if err != nil {
+				slog.Debug(fmt.Sprintf("Failed to read elastic response with %s", err.Error()))
+			}
+			var elasticError SearchErrorResponse
+			if json.Unmarshal(body, &elasticError) == nil {
+				if rootCauses, ok := elasticError.Error["root_cause"]; ok && len(rootCauses) > 0 {
+					results["elastic_error"] = rootCauses[0].Type
+				}
+			}
 		}
-		var elasticError SearchErrorResponse
-		json.Unmarshal(body, &elasticError)
-		rootCause := elasticError.Error["root_cause"][0]
-		results["elastic_error"] = rootCause.Type
 	}
 
-	// TODO: Ping search explanation extractor once it has a healthcheck endpoint of its own
-
-	// Ping BigQuery
 	ctx := context.Background()
 	_, bqErr := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME")).Metadata(ctx)
 	if bqErr != nil {
@@ -177,12 +190,10 @@ func HealthCheck(c *gin.Context) {
 	}
 
 	results["search_service_status"] = "OK"
-
 	c.JSON(responseStatus, results)
 }
 
 func EnsureTableExists() error {
-
 	ctx := context.Background()
 	dataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
 	table := dataset.Table(os.Getenv("BQ_TABLE_NAME"))
@@ -209,9 +220,59 @@ func EnsureTableExists() error {
 	return nil
 }
 
-// SearchGeneric performs searches of the ElasticSearch indices for datasets,
-// tools and collections, using the query supplied in the gin.Context.
-// Search results are returned grouped by entity type.
+// executeSearch is the shared implementation for all entity index searches.
+// It encodes the query, calls Elastic, parses the response, and applies
+// explanation stripping and aggregation flattening.
+func executeSearch(ctx context.Context, index string, elasticQuery gin.H, query Query, entityType string, searchUuid string) SearchResponse {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to encode elastic query with %s", err.Error()))
+	}
+
+	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithContext(ctx),
+		ElasticClient.Search.WithIndex(index),
+		ElasticClient.Search.WithBody(&buf),
+	)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to execute elastic query on index %s: %s", index, err.Error()))
+		return SearchResponse{}
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		slog.Debug(fmt.Sprintf("Failed to read elastic response with %s", err.Error()))
+	}
+
+	var elasticResp SearchResponse
+	if err := json.Unmarshal(body, &elasticResp); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to unmarshal elastic response with %s", err.Error()))
+	}
+
+	if elasticResp.Hits.Hits == nil {
+		var elasticError SearchErrorResponse
+		if json.Unmarshal(body, &elasticError) == nil {
+			if rootCauses, ok := elasticError.Error["root_cause"]; ok && len(rootCauses) > 0 && rootCauses[0].Reason != "" {
+				slog.Warn(fmt.Sprintf("Search query returned elastic error: %s", rootCauses[0].Reason))
+			} else {
+				slog.Warn("Hits from elastic are null, query may be malformed")
+			}
+		} else {
+			slog.Warn("Hits from elastic are null, query may be malformed")
+		}
+		slog.Debug(fmt.Sprintf("Null result elastic query: %v", elasticQuery))
+	}
+
+	stripExplanation(elasticResp, query, entityType, searchUuid)
+	elasticResp.Aggregations = flattenAggs(elasticResp)
+	return elasticResp
+}
+
+// SearchGeneric performs searches across all entity indices concurrently.
+// A 10-second timeout is applied; if any index is unresponsive the request
+// returns 504 rather than hanging indefinitely.
+// Results are returned grouped by entity type.
 func SearchGeneric(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
@@ -220,27 +281,47 @@ func SearchGeneric(c *gin.Context) {
 	}
 
 	searchUuid := uuid.New().String()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 
-	datasetResults := make(chan SearchResponse)
-	toolResults := make(chan SearchResponse)
-	collectionResults := make(chan SearchResponse)
-	dataUseResults := make(chan SearchResponse)
-	publicationResults := make(chan SearchResponse)
-	dataProviderResults := make(chan SearchResponse)
-	dataCustodianNetworkResults := make(chan SearchResponse)
+	// Buffered channels so goroutines can send and exit even if we return early.
+	datasetResults := make(chan SearchResponse, 1)
+	toolResults := make(chan SearchResponse, 1)
+	collectionResults := make(chan SearchResponse, 1)
+	dataUseResults := make(chan SearchResponse, 1)
+	publicationResults := make(chan SearchResponse, 1)
+	dataProviderResults := make(chan SearchResponse, 1)
+	dataCustodianNetworkResults := make(chan SearchResponse, 1)
+
+	go func() {
+		datasetResults <- executeSearch(ctx, "dataset", datasetElasticConfig(query), query, "dataset", searchUuid)
+	}()
+	go func() {
+		toolResults <- executeSearch(ctx, "tool", toolsElasticConfig(query), query, "tool", searchUuid)
+	}()
+	go func() {
+		collectionResults <- executeSearch(ctx, "collection", collectionsElasticConfig(query), query, "collection", searchUuid)
+	}()
+	go func() {
+		dataUseResults <- executeSearch(ctx, "datauseregister", dataUseElasticConfig(query), query, "dur", searchUuid)
+	}()
+	go func() {
+		publicationResults <- executeSearch(ctx, "publication", publicationElasticConfig(query), query, "publication", searchUuid)
+	}()
+	go func() {
+		dataProviderResults <- executeSearch(ctx, "dataprovider", dataProviderElasticConfig(query), query, "dataProvider", searchUuid)
+	}()
+	go func() {
+		dataCustodianNetworkResults <- executeSearch(ctx, "datacustodiannetwork", dataCustodianNetworkElasticConfig(query), query, "datacustodiannetwork", searchUuid)
+	}()
 
 	results := make(map[string]interface{})
-
-	go datasetChannel(query, searchUuid, datasetResults)
-	go toolChannel(query, searchUuid, toolResults)
-	go collectionChannel(query, searchUuid, collectionResults)
-	go dataUseChannel(query, searchUuid, dataUseResults)
-	go publicationChannel(query, searchUuid, publicationResults)
-	go dataProviderChannel(query, searchUuid, dataProviderResults)
-	go dataCustodianNetworkChannel(query, searchUuid, dataCustodianNetworkResults)
-
 	for i := 0; i < 7; i++ {
 		select {
+		case <-ctx.Done():
+			slog.Warn("SearchGeneric timed out waiting for results")
+			c.JSON(http.StatusGatewayTimeout, gin.H{"error": "search timed out"})
+			return
 		case datasets := <-datasetResults:
 			results["dataset"] = datasets
 		case tools := <-toolResults:
@@ -267,84 +348,10 @@ func DatasetSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := datasetSearch(query, searchUuid)
-	BQUpload(query, results, "dataset", searchUuid)
+	results := executeSearch(c.Request.Context(), "dataset", datasetElasticConfig(query), query, "dataset", searchUuid)
+	go BQUpload(query, results, "dataset", searchUuid)
 	c.JSON(http.StatusOK, results)
-}
-
-func datasetChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := datasetSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// datasetSearch performs a search of the ElasticSearch datasets index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-func datasetSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := datasetElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic config %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("dataset"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		// When there are genuinely no matches elastic returns hits == [].
-		// When the hits == nil this implies something has actually gone wrong
-		// for example an aggregation that cannot be calculated.
-		// So we throw a warning in the case where hits == nil and more info
-		// if debug mode is on.
-		var elasticError SearchErrorResponse
-		json.Unmarshal(body, &elasticError)
-		// Try to extract the root cause message; if unable throw generic warning
-		rootCause := elasticError.Error["root_cause"][0]
-		if rootCause.Reason != "" {
-			slog.Warn(
-				fmt.Sprintf("Search query returned elastic error: %s",
-					rootCause.Reason,
-				))
-		} else {
-			slog.Warn("Hits from elastic are null, query may be malformed")
-		}
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "dataset", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
 }
 
 // datasetElasticConfig defines the body of the query to the elastic datasets index
@@ -356,9 +363,7 @@ func datasetElasticConfig(query Query) gin.H {
 		if len(query.IDs) == 0 {
 			mainQuery = gin.H{
 				"function_score": gin.H{
-					"query": gin.H{
-						"match_all": gin.H{},
-					},
+					"query":        gin.H{"match_all": gin.H{}},
 					"random_score": gin.H{},
 				},
 			}
@@ -370,11 +375,7 @@ func datasetElasticConfig(query Query) gin.H {
 							"query": gin.H{
 								"bool": gin.H{
 									"filter": []gin.H{
-										{
-											"terms": gin.H{
-												"_id": query.IDs,
-											},
-										},
+										{"terms": gin.H{"_id": query.IDs}},
 									},
 								},
 							},
@@ -383,7 +384,6 @@ func datasetElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-
 			sortQuery = []gin.H{
 				{
 					"_script": gin.H{
@@ -391,9 +391,7 @@ func datasetElasticConfig(query Query) gin.H {
 						"script": gin.H{
 							"lang":   "painless",
 							"source": "params.order.indexOf(doc['_id'].value)",
-							"params": gin.H{
-								"order": query.IDs,
-							},
+							"params": gin.H{"order": query.IDs},
 						},
 						"order": "asc",
 					},
@@ -439,17 +437,16 @@ func datasetElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["dataset"] {
-		filters := []gin.H{}
+		var filter gin.H
 		if key == "dateRange" {
-			rangeFilter := gin.H{
+			filter = gin.H{
 				"bool": gin.H{
 					"must": []gin.H{
 						{"range": gin.H{"startDate": gin.H{"lte": terms.([]interface{})[1]}}},
@@ -457,14 +454,12 @@ func datasetElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-			mustFilters = append(mustFilters, rangeFilter)
 		} else if key == "populationSize" {
 			includeNull := terms.(map[string]interface{})["includeUnreported"].(bool)
 			from := terms.(map[string]interface{})["from"]
 			to := terms.(map[string]interface{})["to"]
-			var rangeFilter gin.H
 			if includeNull {
-				rangeFilter = gin.H{
+				filter = gin.H{
 					"bool": gin.H{
 						"should": []gin.H{
 							{"range": gin.H{key: gin.H{"gte": from, "lte": to}}},
@@ -473,7 +468,7 @@ func datasetElasticConfig(query Query) gin.H {
 					},
 				}
 			} else {
-				rangeFilter = gin.H{
+				filter = gin.H{
 					"bool": gin.H{
 						"must": []gin.H{
 							{"range": gin.H{key: gin.H{"gte": from, "lte": to}}},
@@ -481,30 +476,21 @@ func datasetElasticConfig(query Query) gin.H {
 					},
 				}
 			}
-			mustFilters = append(mustFilters, rangeFilter)
 		} else {
+			filters := []gin.H{}
 			for _, t := range terms.([]interface{}) {
 				filters = append(filters, gin.H{"term": gin.H{key: t}})
 			}
-			mustFilters = append(mustFilters, gin.H{
-				"bool": gin.H{
-					"should": filters,
-				},
-			})
+			filter = gin.H{"bool": gin.H{"should": filters}}
 		}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
-		"size":  os.Getenv("SEARCH_NO_RECORDS"),
-		"query": mainQuery,
+		"size":    searchNoRecords,
+		"query":   mainQuery,
+		"explain": explanationEnabled,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"description": gin.H{
@@ -519,17 +505,13 @@ func datasetElasticConfig(query Query) gin.H {
 				},
 			},
 		},
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
-
 	if len(query.IDs) > 0 {
 		response["sort"] = sortQuery
 	}
-
 	return response
-
 }
 
 func ToolSearch(c *gin.Context) {
@@ -538,68 +520,10 @@ func ToolSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := toolSearch(query, searchUuid)
-	BQUpload(query, results, "tool", searchUuid)
+	results := executeSearch(c.Request.Context(), "tool", toolsElasticConfig(query), query, "tool", searchUuid)
+	go BQUpload(query, results, "tool", searchUuid)
 	c.JSON(http.StatusOK, results)
-}
-
-func toolChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := toolSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// toolSearch performs a search of the ElasticSearch tools index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-func toolSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := toolsElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("tool"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "tool", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
 }
 
 // toolsElasticConfig defines the body of the query to the elastic tools index
@@ -611,9 +535,7 @@ func toolsElasticConfig(query Query) gin.H {
 		if len(query.IDs) == 0 {
 			mainQuery = gin.H{
 				"function_score": gin.H{
-					"query": gin.H{
-						"match_all": gin.H{},
-					},
+					"query":        gin.H{"match_all": gin.H{}},
 					"random_score": gin.H{},
 				},
 			}
@@ -625,11 +547,7 @@ func toolsElasticConfig(query Query) gin.H {
 							"query": gin.H{
 								"bool": gin.H{
 									"filter": []gin.H{
-										{
-											"terms": gin.H{
-												"_id": query.IDs,
-											},
-										},
+										{"terms": gin.H{"_id": query.IDs}},
 									},
 								},
 							},
@@ -638,7 +556,6 @@ func toolsElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-
 			sortQuery = []gin.H{
 				{
 					"_script": gin.H{
@@ -646,9 +563,7 @@ func toolsElasticConfig(query Query) gin.H {
 						"script": gin.H{
 							"lang":   "painless",
 							"source": "params.order.indexOf(doc['_id'].value)",
-							"params": gin.H{
-								"order": query.IDs,
-							},
+							"params": gin.H{"order": query.IDs},
 						},
 						"order": "asc",
 					},
@@ -689,36 +604,26 @@ func toolsElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["tool"] {
 		filters := []gin.H{}
 		for _, t := range terms.([]interface{}) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
-		mustFilters = append(mustFilters, gin.H{
-			"bool": gin.H{
-				"should": filters,
-			},
-		})
+		filter := gin.H{"bool": gin.H{"should": filters}}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
-		"size":  os.Getenv("SEARCH_NO_RECORDS"),
-		"query": mainQuery,
+		"size":    searchNoRecords,
+		"query":   mainQuery,
+		"explain": explanationEnabled,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"name": gin.H{
@@ -733,15 +638,12 @@ func toolsElasticConfig(query Query) gin.H {
 				},
 			},
 		},
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
-
 	if len(query.IDs) > 0 {
 		response["sort"] = sortQuery
 	}
-
 	return response
 }
 
@@ -751,68 +653,10 @@ func CollectionSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := collectionSearch(query, searchUuid)
-	BQUpload(query, results, "collection", searchUuid)
+	results := executeSearch(c.Request.Context(), "collection", collectionsElasticConfig(query), query, "collection", searchUuid)
+	go BQUpload(query, results, "collection", searchUuid)
 	c.JSON(http.StatusOK, results)
-}
-
-func collectionChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := collectionSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// collectionsSearch performs a search of the ElasticSearch collections index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-func collectionSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := collectionsElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("collection"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "collection", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
 }
 
 // collectionsElasticConfig defines the body of the query to the elastic collections index
@@ -824,9 +668,7 @@ func collectionsElasticConfig(query Query) gin.H {
 		if len(query.IDs) == 0 {
 			mainQuery = gin.H{
 				"function_score": gin.H{
-					"query": gin.H{
-						"match_all": gin.H{},
-					},
+					"query":        gin.H{"match_all": gin.H{}},
 					"random_score": gin.H{},
 				},
 			}
@@ -838,11 +680,7 @@ func collectionsElasticConfig(query Query) gin.H {
 							"query": gin.H{
 								"bool": gin.H{
 									"filter": []gin.H{
-										{
-											"terms": gin.H{
-												"_id": query.IDs,
-											},
-										},
+										{"terms": gin.H{"_id": query.IDs}},
 									},
 								},
 							},
@@ -851,7 +689,6 @@ func collectionsElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-
 			sortQuery = []gin.H{
 				{
 					"_script": gin.H{
@@ -859,9 +696,7 @@ func collectionsElasticConfig(query Query) gin.H {
 						"script": gin.H{
 							"lang":   "painless",
 							"source": "params.order.indexOf(doc['_id'].value)",
-							"params": gin.H{
-								"order": query.IDs,
-							},
+							"params": gin.H{"order": query.IDs},
 						},
 						"order": "asc",
 					},
@@ -902,36 +737,26 @@ func collectionsElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["collection"] {
 		filters := []gin.H{}
 		for _, t := range terms.([]interface{}) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
-		mustFilters = append(mustFilters, gin.H{
-			"bool": gin.H{
-				"should": filters,
-			},
-		})
+		filter := gin.H{"bool": gin.H{"should": filters}}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
-		"size":  os.Getenv("SEARCH_NO_RECORDS"),
-		"query": mainQuery,
+		"size":    searchNoRecords,
+		"query":   mainQuery,
+		"explain": explanationEnabled,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"description": gin.H{
@@ -951,15 +776,12 @@ func collectionsElasticConfig(query Query) gin.H {
 				},
 			},
 		},
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
-
 	if len(query.IDs) > 0 {
 		response["sort"] = sortQuery
 	}
-
 	return response
 }
 
@@ -969,68 +791,10 @@ func DataUseSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := dataUseSearch(query, searchUuid)
-	BQUpload(query, results, "datauseregister", searchUuid)
+	results := executeSearch(c.Request.Context(), "datauseregister", dataUseElasticConfig(query), query, "dur", searchUuid)
+	go BQUpload(query, results, "datauseregister", searchUuid)
 	c.JSON(http.StatusOK, results)
-}
-
-func dataUseChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := dataUseSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// dataUseSearch performs a search of the ElasticSearch data uses index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-func dataUseSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := dataUseElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("datauseregister"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "dur", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
 }
 
 // dataUseElasticConfig defines the body of the query to the elastic data uses index
@@ -1042,9 +806,7 @@ func dataUseElasticConfig(query Query) gin.H {
 		if len(query.IDs) == 0 {
 			mainQuery = gin.H{
 				"function_score": gin.H{
-					"query": gin.H{
-						"match_all": gin.H{},
-					},
+					"query":        gin.H{"match_all": gin.H{}},
 					"random_score": gin.H{},
 				},
 			}
@@ -1056,11 +818,7 @@ func dataUseElasticConfig(query Query) gin.H {
 							"query": gin.H{
 								"bool": gin.H{
 									"filter": []gin.H{
-										{
-											"terms": gin.H{
-												"_id": query.IDs,
-											},
-										},
+										{"terms": gin.H{"_id": query.IDs}},
 									},
 								},
 							},
@@ -1069,7 +827,6 @@ func dataUseElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-
 			sortQuery = []gin.H{
 				{
 					"_script": gin.H{
@@ -1077,9 +834,7 @@ func dataUseElasticConfig(query Query) gin.H {
 						"script": gin.H{
 							"lang":   "painless",
 							"source": "params.order.indexOf(doc['_id'].value)",
-							"params": gin.H{
-								"order": query.IDs,
-							},
+							"params": gin.H{"order": query.IDs},
 						},
 						"order": "asc",
 					},
@@ -1122,36 +877,26 @@ func dataUseElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["dataUseRegister"] {
 		filters := []gin.H{}
 		for _, t := range terms.([]interface{}) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
-		mustFilters = append(mustFilters, gin.H{
-			"bool": gin.H{
-				"should": filters,
-			},
-		})
+		filter := gin.H{"bool": gin.H{"should": filters}}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
-		"size":  os.Getenv("SEARCH_NO_RECORDS"),
-		"query": mainQuery,
+		"size":    searchNoRecords,
+		"query":   mainQuery,
+		"explain": explanationEnabled,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"laySummary": gin.H{
@@ -1161,15 +906,12 @@ func dataUseElasticConfig(query Query) gin.H {
 				},
 			},
 		},
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
-
 	if len(query.IDs) > 0 {
 		response["sort"] = sortQuery
 	}
-
 	return response
 }
 
@@ -1179,73 +921,14 @@ func PublicationSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := publicationSearch(query, searchUuid)
-	BQUpload(query, results, "publication", searchUuid)
+	results := executeSearch(c.Request.Context(), "publication", publicationElasticConfig(query), query, "publication", searchUuid)
+	go BQUpload(query, results, "publication", searchUuid)
 	c.JSON(http.StatusOK, results)
 }
 
-func publicationChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := publicationSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// publicationSearch performs a search of the ElasticSearch publications index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-// The publications index consists of the publications that are hosted on the
-// Gateway - this is not a federated search.
-func publicationSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := publicationElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("publication"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "publication", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
-}
-
-// publicationElasticConfig defines the body of the query to the elastic publications index
+// publicationElasticConfig defines the body of the query to the elastic publications index.
+// The publications index consists of publications hosted on the Gateway — not a federated search.
 func publicationElasticConfig(query Query) gin.H {
 	var mainQuery gin.H
 	var sortQuery []gin.H
@@ -1254,9 +937,7 @@ func publicationElasticConfig(query Query) gin.H {
 		if len(query.IDs) == 0 {
 			mainQuery = gin.H{
 				"function_score": gin.H{
-					"query": gin.H{
-						"match_all": gin.H{},
-					},
+					"query":        gin.H{"match_all": gin.H{}},
 					"random_score": gin.H{},
 				},
 			}
@@ -1268,11 +949,7 @@ func publicationElasticConfig(query Query) gin.H {
 							"query": gin.H{
 								"bool": gin.H{
 									"filter": []gin.H{
-										{
-											"terms": gin.H{
-												"_id": query.IDs,
-											},
-										},
+										{"terms": gin.H{"_id": query.IDs}},
 									},
 								},
 							},
@@ -1281,7 +958,6 @@ func publicationElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-
 			sortQuery = []gin.H{
 				{
 					"_script": gin.H{
@@ -1289,9 +965,7 @@ func publicationElasticConfig(query Query) gin.H {
 						"script": gin.H{
 							"lang":   "painless",
 							"source": "params.order.indexOf(doc['_id'].value)",
-							"params": gin.H{
-								"order": query.IDs,
-							},
+							"params": gin.H{"order": query.IDs},
 						},
 						"order": "asc",
 					},
@@ -1333,17 +1007,16 @@ func publicationElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["paper"] {
-		filters := []gin.H{}
+		var filter gin.H
 		if key == "publicationDate" {
-			rangeFilter := gin.H{
+			filter = gin.H{
 				"bool": gin.H{
 					"must": []gin.H{
 						{"range": gin.H{"publicationDate": gin.H{"gte": terms.([]interface{})[0]}}},
@@ -1351,30 +1024,21 @@ func publicationElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-			mustFilters = append(mustFilters, rangeFilter)
 		} else {
+			filters := []gin.H{}
 			for _, t := range terms.([]interface{}) {
 				filters = append(filters, gin.H{"term": gin.H{key: t}})
 			}
-			mustFilters = append(mustFilters, gin.H{
-				"bool": gin.H{
-					"should": filters,
-				},
-			})
+			filter = gin.H{"bool": gin.H{"should": filters}}
 		}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
-		"size":  os.Getenv("SEARCH_NO_RECORDS"),
-		"query": mainQuery,
+		"size":    searchNoRecords,
+		"query":   mainQuery,
+		"explain": explanationEnabled,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"title": gin.H{
@@ -1389,15 +1053,12 @@ func publicationElasticConfig(query Query) gin.H {
 				},
 			},
 		},
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
-
 	if len(query.IDs) > 0 {
 		response["sort"] = sortQuery
 	}
-
 	return response
 }
 
@@ -1407,68 +1068,10 @@ func DataProviderSearch(c *gin.Context) {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := dataProviderSearch(query, searchUuid)
-	BQUpload(query, results, "dataprovider", searchUuid)
+	results := executeSearch(c.Request.Context(), "dataprovider", dataProviderElasticConfig(query), query, "dataProvider", searchUuid)
+	go BQUpload(query, results, "dataprovider", searchUuid)
 	c.JSON(http.StatusOK, results)
-}
-
-func dataProviderChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := dataProviderSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// dataProviderSearch performs a search of the ElasticSearch dataproviders index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-func dataProviderSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := dataProviderElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("dataprovider"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "dataProvider", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
 }
 
 // dataProviderElasticConfig defines the body of the query to the elastic data providers index
@@ -1480,9 +1083,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 		if len(query.IDs) == 0 {
 			mainQuery = gin.H{
 				"function_score": gin.H{
-					"query": gin.H{
-						"match_all": gin.H{},
-					},
+					"query":        gin.H{"match_all": gin.H{}},
 					"random_score": gin.H{},
 				},
 			}
@@ -1494,11 +1095,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 							"query": gin.H{
 								"bool": gin.H{
 									"filter": []gin.H{
-										{
-											"terms": gin.H{
-												"_id": query.IDs,
-											},
-										},
+										{"terms": gin.H{"_id": query.IDs}},
 									},
 								},
 							},
@@ -1507,7 +1104,6 @@ func dataProviderElasticConfig(query Query) gin.H {
 					},
 				},
 			}
-
 			sortQuery = []gin.H{
 				{
 					"_script": gin.H{
@@ -1515,9 +1111,7 @@ func dataProviderElasticConfig(query Query) gin.H {
 						"script": gin.H{
 							"lang":   "painless",
 							"source": "params.order.indexOf(doc['_id'].value)",
-							"params": gin.H{
-								"order": query.IDs,
-							},
+							"params": gin.H{"order": query.IDs},
 						},
 						"order": "asc",
 					},
@@ -1559,119 +1153,45 @@ func dataProviderElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["dataProvider"] {
 		filters := []gin.H{}
 		for _, t := range terms.([]interface{}) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
-		mustFilters = append(mustFilters, gin.H{
-			"bool": gin.H{
-				"should": filters,
-			},
-		})
+		filter := gin.H{"bool": gin.H{"should": filters}}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	response := gin.H{
-		"size":        os.Getenv("SEARCH_NO_RECORDS"),
+		"size":        searchNoRecords,
 		"query":       mainQuery,
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"explain":     explanationEnabled,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
-
 	if len(query.IDs) > 0 {
 		response["sort"] = sortQuery
 	}
-
 	return response
 }
 
-// DataCustodianNetworkSearch performs a search of the ElasticSearch dataCustodianNetworks index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
 func DataCustodianNetworkSearch(c *gin.Context) {
 	var query Query
 	if err := c.BindJSON(&query); err != nil {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
 	searchUuid := uuid.New().String()
-	results := dataCustodianNetworkSearch(query, searchUuid)
-	BQUpload(query, results, "datacustodiannetwork", searchUuid)
+	results := executeSearch(c.Request.Context(), "datacustodiannetwork", dataCustodianNetworkElasticConfig(query), query, "datacustodiannetwork", searchUuid)
+	go BQUpload(query, results, "datacustodiannetwork", searchUuid)
 	c.JSON(http.StatusOK, results)
-}
-
-func dataCustodianNetworkChannel(query Query, searchUuid string, res chan SearchResponse) {
-	elasticResp := dataCustodianNetworkSearch(query, searchUuid)
-	res <- elasticResp
-}
-
-// dataCustodianNetworkSearch performs a search of the ElasticSearch dataCustodianNetworks index using
-// the provided query as the search term.  Results are returned in the format
-// returned by elastic (SearchResponse).
-func dataCustodianNetworkSearch(query Query, searchUuid string) SearchResponse {
-	var buf bytes.Buffer
-
-	elasticQuery := dataCustodianNetworkElasticConfig(query)
-	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
-	}
-
-	response, err := ElasticClient.Search(
-		ElasticClient.Search.WithIndex("datacustodiannetwork"),
-		ElasticClient.Search.WithBody(&buf),
-	)
-
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
-	}
-
-	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
-
-	if elasticResp.Hits.Hits == nil {
-		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
-	}
-
-	stripExplanation(elasticResp, query, "datacustodiannetwork", searchUuid)
-	newAggs := flattenAggs(elasticResp)
-
-	elasticResp.Aggregations = newAggs
-
-	return elasticResp
 }
 
 // dataCustodianNetworkElasticConfig defines the body of the query to the elastic datacustodiannetwork index
@@ -1680,9 +1200,7 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 	if query.QueryString == "" {
 		mainQuery = gin.H{
 			"function_score": gin.H{
-				"query": gin.H{
-					"match_all": gin.H{},
-				},
+				"query":        gin.H{"match_all": gin.H{}},
 				"random_score": gin.H{},
 			},
 		}
@@ -1723,36 +1241,26 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 			},
 		}
 		mainQuery = gin.H{
-			"bool": gin.H{
-				"should": []gin.H{mm1, mm2, mm3},
-			},
+			"bool": gin.H{"should": []gin.H{mm1, mm2, mm3}},
 		}
 	}
 
 	mustFilters := []gin.H{}
+	mustFiltersByKey := map[string]gin.H{}
 	for key, terms := range query.Filters["datacustodiannetwork"] {
 		filters := []gin.H{}
 		for _, t := range terms.([]interface{}) {
 			filters = append(filters, gin.H{"term": gin.H{key: t}})
 		}
-		mustFilters = append(mustFilters, gin.H{
-			"bool": gin.H{
-				"should": filters,
-			},
-		})
+		filter := gin.H{"bool": gin.H{"should": filters}}
+		mustFilters = append(mustFilters, filter)
+		mustFiltersByKey[key] = filter
 	}
-
-	f1 := gin.H{
-		"bool": gin.H{
-			"must": mustFilters,
-		},
-	}
-
-	agg1 := buildAggregations(query, mustFilters)
 
 	return gin.H{
-		"size":  os.Getenv("SEARCH_NO_RECORDS"),
-		"query": mainQuery,
+		"size":    searchNoRecords,
+		"query":   mainQuery,
+		"explain": explanationEnabled,
 		"highlight": gin.H{
 			"fields": gin.H{
 				"name": gin.H{
@@ -1767,24 +1275,24 @@ func dataCustodianNetworkElasticConfig(query Query) gin.H {
 				},
 			},
 		},
-		"explain":     true,
-		"post_filter": f1,
-		"aggs":        agg1,
+		"post_filter": gin.H{"bool": gin.H{"must": mustFilters}},
+		"aggs":        buildAggregations(query, mustFiltersByKey),
 	}
 }
 
-// buildAggregations constructs the "aggs" part of an elastic search query
-// from provided Aggregations.
-// Aggregations are expected to be an array of `{'type': string, 'keys': string}`
-func buildAggregations(query Query, mustFilters []gin.H) gin.H {
+// buildAggregations constructs the "aggs" part of an elastic search query.
+// mustFiltersByKey maps each filter's field key to its gin.H filter clause.
+// For each aggregation, all filters except the one for that field are applied,
+// enabling faceted counts that reflect the current selection state.
+func buildAggregations(query Query, mustFiltersByKey map[string]gin.H) gin.H {
 	agg1 := gin.H{}
 	for _, agg := range query.Aggregations {
 		k, ok := agg["keys"].(string)
 		if !ok {
-			log.Printf("Filter key in %s not recognised", agg)
+			log.Printf("Filter key in %v not recognised", agg)
+			continue
 		}
 		aggInner := gin.H{}
-		filters := []gin.H{}
 		if k == "dateRange" {
 			aggInner["startDate"] = gin.H{"min": gin.H{"field": "startDate"}}
 			aggInner["endDate"] = gin.H{"max": gin.H{"field": "endDate"}}
@@ -1792,27 +1300,21 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 			aggInner["startDate"] = gin.H{"min": gin.H{"field": "publicationDate"}}
 			aggInner["endDate"] = gin.H{"max": gin.H{"field": "publicationDate"}}
 		} else if k == "populationSize" {
-			ranges := populationRanges()
 			aggInner[k] = gin.H{
-				"range": gin.H{"field": k, "ranges": ranges},
+				"range": gin.H{"field": k, "ranges": populationRangesCache},
 			}
 		} else {
-			aggInner[k] = gin.H{"terms": gin.H{"field": k, "size": os.Getenv("SEARCH_NO_RECORDS_AGGREGATION")}}
+			aggInner[k] = gin.H{"terms": gin.H{"field": k, "size": searchNoRecordsAggregation}}
 		}
 
-		for _, fil := range mustFilters {
-			filJson, err := json.Marshal(fil)
-			if err != nil {
-				slog.Info("Could not marshal filter")
-			}
-			filStr := string(filJson)
-			if strings.Contains(filStr, k) {
-				continue
-			} else {
+		// Include all active filters except the one for this aggregation key,
+		// so that facet counts reflect the full unfiltered set for each facet.
+		filters := []gin.H{}
+		for filterKey, fil := range mustFiltersByKey {
+			if filterKey != k {
 				filters = append(filters, fil)
 			}
 		}
-
 		agg1[k] = gin.H{
 			"aggs":   aggInner,
 			"filter": gin.H{"bool": gin.H{"must": filters}},
@@ -1821,40 +1323,43 @@ func buildAggregations(query Query, mustFilters []gin.H) gin.H {
 	return agg1
 }
 
-func populationRanges() []gin.H {
-	var ranges []gin.H
-	ranges = append(ranges, gin.H{"from": -1.0, "to": 1.0, "key": "Unreported"})
+func buildPopulationRanges() []gin.H {
+	ranges := []gin.H{{"from": -1.0, "to": 1.0, "key": "Unreported"}}
 	for i := 0; i < 9; i++ {
-		ranges = append(ranges, gin.H{"from": math.Pow(10, float64(i)), "to": math.Pow(10, float64(i+1))})
+		ranges = append(ranges, gin.H{
+			"from": math.Pow(10, float64(i)),
+			"to":   math.Pow(10, float64(i+1)),
+		})
 	}
 	return ranges
 }
 
 func flattenAggs(elasticResp SearchResponse) map[string]any {
 	newAggs := make(map[string]any)
-
 	for k, agg := range elasticResp.Aggregations {
+		aggMap, ok := agg.(map[string]any)
+		if !ok {
+			slog.Debug(fmt.Sprintf("Unexpected aggregation type for key %s", k))
+			continue
+		}
 		if k == "dateRange" || k == "publicationDate" {
-			newAggs["startDate"] = agg.(map[string]any)["startDate"]
-			newAggs["endDate"] = agg.(map[string]any)["endDate"]
+			newAggs["startDate"] = aggMap["startDate"]
+			newAggs["endDate"] = aggMap["endDate"]
 		} else {
-			newAggs[k] = agg.(map[string]any)[k]
+			newAggs[k] = aggMap[k]
 		}
 	}
-
 	return newAggs
 }
 
-// Remove the explanations from a SearchResponse to reduce its size
-// And send explanation to search explanation extractor
+// stripExplanation removes the explanation field from each hit to reduce response size,
+// and forwards the explanation data to the extractor service if configured.
 func stripExplanation(elasticResp SearchResponse, query Query, entityType string, searchUuid string) {
 	_, expEnabled := os.LookupEnv("SEARCH_EXPLANATION_EXTRACTOR")
-	// Send explanation if enabled, entity is dataset and query is not empty
 	if expEnabled && entityType == "dataset" && !reflect.ValueOf(query).IsZero() {
 		respCopy := copyResponseHits(elasticResp)
 		go extractExplanation(respCopy, query, searchUuid)
 	}
-
 	for i := range elasticResp.Hits.Hits {
 		elasticResp.Hits.Hits[i].Explanation = make(map[string]interface{}, 0)
 	}
@@ -1863,11 +1368,8 @@ func stripExplanation(elasticResp SearchResponse, query Query, entityType string
 func copyResponseHits(r SearchResponse) SearchResponse {
 	var hits []Hit
 	hits = append(hits, r.Hits.Hits...)
-	hitsField := HitsField{
-		Hits: hits,
-	}
 	return SearchResponse{
-		Hits: hitsField,
+		Hits: HitsField{Hits: hits},
 	}
 }
 
@@ -1882,27 +1384,28 @@ func extractExplanation(elasticResp SearchResponse, query Query, searchUuid stri
 	body, err := json.Marshal(bodyContent)
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to marshal search explanation payload: %s", err.Error()))
+		return
 	}
 
 	urlPath := fmt.Sprintf("%s/process_data", os.Getenv("SEARCH_EXPLANATION_EXTRACTOR"))
 	req, err := http.NewRequest("POST", urlPath, bytes.NewBuffer(body))
 	if err != nil {
-		slog.Info(fmt.Sprintf("Failed to build search explanation payload with: %s", err.Error()))
+		slog.Info(fmt.Sprintf("Failed to build search explanation request: %s", err.Error()))
+		return
 	}
 	req.Header.Add("Content-Type", "application/json")
 	req.SetBasicAuth(os.Getenv("SEARCH_EXPLANATION_USER"), os.Getenv("SEARCH_EXPLANATION_PASSWORD"))
 
 	response, err := Client.Do(req)
 	if err != nil {
-		slog.Info(fmt.Sprintf("Failed to execute query with: %s", err.Error()))
+		slog.Info(fmt.Sprintf("Failed to send search explanation request: %s", err.Error()))
+		return
 	}
 	defer response.Body.Close()
 
 	respBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		slog.Info(fmt.Sprintf(
-			"Failed to extract search explanation with error %s", err.Error(),
-		))
+		slog.Info(fmt.Sprintf("Failed to read search explanation response: %s", err.Error()))
 	}
 
 	slog.Debug(fmt.Sprintf(
@@ -1910,24 +1413,21 @@ func extractExplanation(elasticResp SearchResponse, query Query, searchUuid stri
 	))
 }
 
-// SearchSimilarDatasets returns the top 3 datasets similar to the document with
-// the provided id.
+// SearchSimilarDatasets returns the top datasets similar to the document with the provided id.
 func SearchSimilarDatasets(c *gin.Context) {
 	var querySimilar SimilarSearch
 	if err := c.BindJSON(&querySimilar); err != nil {
 		slog.Debug(fmt.Sprintf("Failed to interpret search query with %s", err.Error()))
 		return
 	}
-
-	results := similarSearch(querySimilar.ID, "dataset")
+	results := similarSearch(c.Request.Context(), querySimilar.ID, "dataset")
 	c.JSON(http.StatusOK, results)
 }
 
-func similarSearch(id string, index string) SearchResponse {
+func similarSearch(ctx context.Context, id string, index string) SearchResponse {
 	var buf bytes.Buffer
-
 	elasticQuery := gin.H{
-		"size": os.Getenv("SEARCH_NO_RECORDS_SIMILAR_SEARCH"),
+		"size": searchNoRecordsSimilar,
 		"query": gin.H{
 			"more_like_this": gin.H{
 				"like": []gin.H{
@@ -1938,51 +1438,42 @@ func similarSearch(id string, index string) SearchResponse {
 	}
 
 	if err := json.NewEncoder(&buf).Encode(elasticQuery); err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to encode elastic query %s with %s",
-			elasticQuery,
-			err.Error()),
-		)
+		slog.Debug(fmt.Sprintf("Failed to encode elastic query with %s", err.Error()))
 	}
 
 	response, err := ElasticClient.Search(
+		ElasticClient.Search.WithContext(ctx),
 		ElasticClient.Search.WithIndex(index),
 		ElasticClient.Search.WithBody(&buf),
 	)
-
 	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to execute elastic query with %s",
-			err.Error()),
-		)
+		slog.Error(fmt.Sprintf("Failed to execute similar search with %s", err.Error()))
+		return SearchResponse{}
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		slog.Debug(fmt.Sprintf(
-			"Failed to read elastic response with %s",
-			err.Error()),
-		)
+		slog.Debug(fmt.Sprintf("Failed to read elastic response with %s", err.Error()))
 	}
 
 	var elasticResp SearchResponse
-	json.Unmarshal(body, &elasticResp)
+	if err := json.Unmarshal(body, &elasticResp); err != nil {
+		slog.Debug(fmt.Sprintf("Failed to unmarshal elastic response with %s", err.Error()))
+	}
 
 	if elasticResp.Hits.Hits == nil {
 		slog.Warn("Hits from elastic are null, query may be malformed")
-		slog.Debug(fmt.Sprintf("Null result elastic query: %s", elasticQuery))
+		slog.Debug(fmt.Sprintf("Null result elastic query: %v", elasticQuery))
 	}
 
 	return elasticResp
 }
 
 func uploadSearchAnalytics(query Query, results SearchResponse, entityType string, searchUuid string) {
-
 	ctx := context.Background()
 	analyticsDataset := BigQueryClient.Dataset(os.Getenv("BQ_DATASET_NAME"))
 	table := analyticsDataset.Table(os.Getenv("BQ_TABLE_NAME"))
-
 	u := table.Inserter()
 
 	var datasetIds []string
@@ -1999,6 +1490,7 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 		slog.Info(fmt.Sprintf("Could not marshal filters: %s", err.Error()))
 	}
 
+	total, _ := results.Hits.Total["value"].(float64)
 	searchResult := SearchAnalytics{
 		UUID:             searchUuid,
 		Timestamp:        time.Now().Format("2006-01-02 15:04:05"),
@@ -2006,12 +1498,12 @@ func uploadSearchAnalytics(query Query, results SearchResponse, entityType strin
 		SearchTerm:       query.QueryString,
 		FilterUsed:       string(filterUsed),
 		PageResults:      string(pageResults),
-		EntitiesReturned: int(results.Hits.Total["value"].(float64)),
+		EntitiesReturned: int(total),
 	}
 
 	if err := u.Put(ctx, searchResult); err != nil {
 		slog.Info(fmt.Sprintf("Failed to upload search analytics to BigQuery: %s", err.Error()))
 	}
 
-	slog.Debug(fmt.Sprintf("SearchGeneric UUID: %s", searchUuid))
+	slog.Debug(fmt.Sprintf("Search analytics upload complete for UUID: %s", searchUuid))
 }
